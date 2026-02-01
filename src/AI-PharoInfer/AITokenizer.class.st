@@ -102,32 +102,42 @@ AITokenizer >> initializeSpecialTokens [
 AITokenizer >> initializeVocabulary [
 
 	"Initialize a simple vocabulary (in reality, this would be loaded from model)"
-	| vocab |
+	| vocab nextTokenId |
 	vocab := Dictionary new.
-
+nextTokenId := 100.
 	"Add some common words and characters"
 	'the a an and or but is are was were be been being have has had do does did will would could should may might must can to from in on at by for with about as into through during before after above below between among ' splitOn: ' ' do: [ :word |
-		vocab at: word put: vocab size + 100 ].
+		word isEmpty ifFalse: [
+			vocab at: word put: nextTokenId.
+			nextTokenId := nextTokenId + 1 ] ].
 
 	"Add alphabet"
 	$a to: $z do: [ :char |
-		vocab at: char asString put: vocab size + 100 ].
+		vocab at: char asString put: nextTokenId.
+		nextTokenId := nextTokenId + 1 ].
 
 	$A to: $Z do: [ :char |
-		vocab at: char asString put: vocab size + 100 ].
+		vocab at: char asString put: nextTokenId.
+		nextTokenId := nextTokenId + 1 ].
+
 
 	"Add digits"
 	$0 to: $9 do: [ :char |
-		vocab at: char asString put: vocab size + 100 ].
+		vocab at: char asString put: nextTokenId.
+		nextTokenId := nextTokenId + 1 ].
 
 	"Add punctuation"
 	'.,!?;:-()[]{}''""' do: [ :char |
-		vocab at: char asString put: vocab size + 100 ].
+		vocab at: char asString put: nextTokenId.
+		nextTokenId := nextTokenId + 1 ].
 
 	"Add whitespace"
-	vocab at: ' ' put: vocab size + 100.
-	vocab at: String tab put: vocab size + 100.
-	vocab at: String cr put: vocab size + 100.
+	vocab at: ' ' put: nextTokenId.
+	nextTokenId := nextTokenId + 1.
+	vocab at: String tab put: nextTokenId.
+	nextTokenId := nextTokenId + 1.
+	vocab at: String cr put: nextTokenId.
+	nextTokenId := nextTokenId + 1.
 
 	^ vocab
 ]
