@@ -249,9 +249,6 @@ AIGGUFParser >> readString [
 		Error signal: 'Invalid GGUF string length: ', length asString ].
 
 	bytes := stream next: length.
-
-bytes := stream next: length.
-	"Convert UTF-8 bytes to string"
 	^ bytes utf8Decoded
 ]
 
