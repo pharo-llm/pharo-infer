@@ -94,7 +94,6 @@ AIGGUFParser >> parseMetadata [
 	"Parse all metadata key-value pairs"
 
 	metadata := Dictionary new.
-
 	metadataCount timesRepeat: [
 		| key valueType value |
 
@@ -120,6 +119,8 @@ AIGGUFParser >> readArray [
 
 	"Read array length (uint64)"
 	arrayLength := self readUInt64.
+	(arrayLength > self remainingBytes) ifTrue: [
+		Error signal: 'Invalid GGUF array length: ', arrayLength asString ].
 
 	"Read array values"
 	values := OrderedCollection new: arrayLength.
@@ -226,11 +227,12 @@ AIGGUFParser >> readString [
 
 	"Read string length (uint64)"
 	length := self readUInt64.
+	
+	(length > self remainingBytes) ifTrue: [
+		Error signal: 'Invalid GGUF string length: ', length asString ].
 
-	"Read string bytes"
-	bytes := ByteArray new: length.
-	1 to: length do: [ :i |
-		bytes at: i put: stream next ].
+
+bytes := stream next: length.
 
 	"Convert UTF-8 bytes to string"
 	^ bytes utf8Decoded
@@ -314,6 +316,13 @@ AIGGUFParser >> readValue: valueType [
 	valueType = 12 ifTrue: [ ^ self readArray ].
 
 	Error signal: 'Unknown GGUF value type: ', valueType asString
+]
+
+{ #category : 'as yet unclassified' }
+AIGGUFParser >> remainingBytes [
+
+	"Return remaining bytes in the stream"
+	^ stream size - stream position
 ]
 
 { #category : 'as yet unclassified' }

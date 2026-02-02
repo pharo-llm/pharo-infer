@@ -127,7 +127,7 @@ AILocalBackend >> loadModelData: aModel [
 	
 	
 	"Parse GGUF file if format is GGUF"
-	aModel format = 'gguf' ifTrue: [
+(aModel format notNil and: [ aModel format extension asLowercase = 'gguf' ]) ifTrue: [
 		parser := AIGGUFParser parseFile: aModel path.
 		tokenizerData := parser tokenizerData.
 

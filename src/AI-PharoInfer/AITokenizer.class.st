@@ -285,5 +285,7 @@ AITokenizer >> vocabulary: anObject [
 AITokenizer >> vocabularySize [
 
 	"For loaded vocabularies (e.g., from GGUF), special tokens are already included"
-	^ vocabulary size max: (specialTokens values max + 1)
+	vocabulary ifNil: [
+		^ specialTokens values max + 1 ].
+	^ vocabulary size
 ]
