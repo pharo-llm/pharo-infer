@@ -49,7 +49,7 @@ AIInferenceEngine >> complete: prompt model: modelName options: options [
 	"Generate text completion with custom options"
 	| model result |
 
-	model := self modelManager modelNamed: modelName.
+	model := self resolveModelNamed: modelName.
 	model ifNil: [
 		Error signal: 'Model not found: ', modelName ].
 
@@ -67,7 +67,7 @@ AIInferenceEngine >> embeddings: text model: modelName [
 	"Generate embeddings for the given text"
 	| model result |
 
-	model := self modelManager modelNamed: modelName.
+	model := self resolveModelNamed: modelName.
 	model ifNil: [
 		Error signal: 'Model not found: ', modelName ].
 
@@ -98,6 +98,23 @@ AIInferenceEngine >> modelManager: anObject [
 	modelManager := anObject
 ]
 
+{ #category : 'private' }
+AIInferenceEngine >> resolveModelNamed: modelName [
+
+	| model defaultManager |
+	model := self modelManager modelNamed: modelName.
+	model ifNotNil: [ ^ model ].
+
+	defaultManager := AIModelManager default.
+	(defaultManager ~~ self modelManager)
+		ifTrue: [
+			model := defaultManager modelNamed: modelName.
+			model ifNotNil: [
+				self modelManager: defaultManager ] ].
+
+	^ model
+]
+
 { #category : 'accessing' }
 AIInferenceEngine >> stream: prompt model: modelName onToken: aBlock [ 
 
@@ -111,7 +128,7 @@ AIInferenceEngine >> stream: prompt model: modelName options: options onToken: a
 	"Stream text generation with custom options"
 	| model |
 
-	model := self modelManager modelNamed: modelName.
+	model := self resolveModelNamed: modelName.
 	model ifNil: [
 		Error signal: 'Model not found: ', modelName ].
 
