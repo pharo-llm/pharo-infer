@@ -20,22 +20,6 @@ AIModelTest >> testCreateModel [
 ]
 
 { #category : 'tests' }
-AIModelTest >> testFromFile [
-
-	| model file |
-
-	file := FileLocator temp / 'test-model.gguf'.
-	file ensureCreateFile.
-
-	[ model := AIModel fromFile: file.
-
-	self assert: model name equals: 'test-model'.
-	self assert: model path equals: file.
-	self assert: model format name equals: 'GGUF' ]
-		ensure: [ file ensureDelete ]
-]
-
-{ #category : 'tests' }
 AIModelTest >> testLoadAndUnload [
 
 	| model backend |

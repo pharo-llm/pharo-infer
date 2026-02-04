@@ -1,3 +1,20 @@
+"
+```
+| manager engine model |
+manager := AIModelManager default.
+
+""Use AILlamaCppBackend instead of AILocalBackend""
+manager currentBackend: AILlamaCppBackend new.
+
+model := manager loadModel: (FileLocator home / 'Desktop' / 'small.gguf') fullName.
+
+engine := AIInferenceEngine default.
+engine backend: manager currentBackend.
+
+engine complete: 'Hello World !' model: model name.
+```
+
+"
 Class {
 	#name : 'AILocalBackend',
 	#superclass : 'AIBackend',

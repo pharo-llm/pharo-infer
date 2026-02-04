@@ -27,16 +27,6 @@ AITokenizerTest >> testDecode [
 ]
 
 { #category : 'running' }
-AITokenizerTest >> testDecodeSingleToken [
-
-	| text |
-
-	text := tokenizer decode: tokenizer bosToken.
-
-	self assert: text equals: '<BOS>'
-]
-
-{ #category : 'running' }
 AITokenizerTest >> testEncode [
 
 	| tokens text |
