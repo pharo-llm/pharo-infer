@@ -60,84 +60,79 @@ AIGGUFParser >> metadata [
 
 { #category : 'as yet unclassified' }
 AIGGUFParser >> parseFile: aFileReference [
+"Parse a GGUF file"
+| fileRef |
+fileRef := aFileReference asFileReference.
 
-	"Parse a GGUF file"
+fileRef exists ifFalse: [
+	Error signal: 'File not found: ', fileRef fullName ].
 
-	aFileReference asFileReference exists ifFalse: [
-		Error signal: 'File not found: ', aFileReference fullName ].
+stream := fileRef binaryReadStream.
 
-	stream := aFileReference asFileReference binaryReadStream.
+[
+	self parseHeader.
+	self parseMetadata.
+] ensure: [ stream close ].
 
-	[
-		self parseHeader.
-		self parseMetadata.
-	] ensure: [ stream close ].
-
-	^ self
+^ self
 ]
 
 { #category : 'as yet unclassified' }
 AIGGUFParser >> parseHeader [
-
 	"Parse GGUF file header"
-	| magic byte |
+| magic |
+magic := stream next: 4.
+(magic isNil or: [ magic size < 4 ]) ifTrue: [
+	Error signal: 'Unexpected end of file while reading GGUF magic number' ].
 
-	"Read magic number (4 bytes)"
-	magic := ByteArray new: 4.
-	1 to: 4 do: [ :i |
-		byte := stream next.
-		byte ifNil: [ Error signal: 'Unexpected end of file while reading GGUF magic number' ].
-		magic at: i put: byte ].
+"GGUF magic bytes: 0x47 0x47 0x55 0x46 == 'GGUF'"
+(magic = #[71 71 85 70]) ifFalse: [
+	Error signal: 'Not a GGUF file (bad magic)' ].
 
-	"Read version (uint32, little-endian)"
-	version := self readUInt32.
-
-	"Read tensor count (uint64, little-endian)"
-	tensorCount := self readUInt64.
-
-	"Read metadata count (uint64, little-endian)"
-	metadataCount := self readUInt64.
+version := self readUInt32.
+tensorCount := self readUInt64.
+metadataCount := self readUInt64
 ]
 
 { #category : 'as yet unclassified' }
 AIGGUFParser >> parseMetadata [
-	"Parse all metadata key-value pairs"
 
-	metadata := Dictionary new.
-metadataCount timesRepeat: [
-		| key valueType value |
-		[
-			"Read key"
-			key := self readKeyString.
-			"Read value type (uint32)"
-			valueType := self readUInt32.
-			"Read value based on type"
-			value := self readValue: valueType.
+"Parse all metadata key-value pairs"
+| count |
+metadata := Dictionary new.
+count := self readArrayLength: metadataCount.
 
-			metadata at: key put: value
-		] on: Error do: [ :ex |
-			key ifNotNil: [
-				Error signal: 'Error parsing metadata key ''', key, ''': ', ex messageText
-			] ifNil: [
-				Error signal: 'Error parsing metadata: ', ex messageText
-			]
+count timesRepeat: [
+	| key valueType value |
+	[
+		key := self readKeyString.
+		valueType := self readUInt32.
+		value := self readValue: valueType.
+		metadata at: key put: value
+	] on: Error do: [ :ex |
+		key ifNotNil: [
+			Error signal: 'Error parsing metadata key ''', key, ''': ', ex messageText
+		] ifNil: [
+			Error signal: 'Error parsing metadata: ', ex messageText
 		]
 	]
+]
 ]
 
 { #category : 'as yet unclassified' }
 AIGGUFParser >> readArray [
-	"Read an array value"
 
-	| arrayType arrayLength values |
-	"Read array value type (uint32)"
-	arrayType := self readUInt32. "Read array length (uint64)"
-	arrayLength := self readUInt64.
-	arrayLength > self remainingBytes ifTrue: [ Error signal: 'Invalid GGUF array length: ' , arrayLength asString ]. "Read array values"
-	values := OrderedCollection new: (self readArrayLength: arrayLength).
-	arrayLength timesRepeat: [ values add: (self readValue: arrayType) ].
+"Read a GGUF array: element type (uint32), element count (uint64), then elements"
+| arrayType arrayLength len values |
+arrayType := self readUInt32.
+arrayLength := self readUInt64.
+len := self readArrayLength: arrayLength.
 
-	^ values asArray
+values := Array new: len.
+1 to: len do: [ :i |
+	values at: i put: (self readValue: arrayType) ].
+
+^ values
 ]
 
 { #category : 'as yet unclassified' }
@@ -248,28 +243,38 @@ byte ifNil: [ Error signal: 'Unexpected end of GGUF file while reading Int8' ].
 
 { #category : 'as yet unclassified' }
 AIGGUFParser >> readKeyString [
+"GGUF metadata keys are gguf_string_t (uint64 length) and must be ASCII per spec."
+| key |
+key := self readString.
 
-	| length bytes |
-	length := self readUInt32.
-	length > self remainingBytes ifTrue: [ Error signal: 'Invalid GGUF key length: ' , length asString ].
-	bytes := stream next: length.
-	bytes ifNil: [ Error signal: 'Unexpected end of GGUF file while reading key string' ].
-	(bytes size < length) ifTrue: [
-		Error signal: 'Incomplete key string: expected ', length asString, ' bytes, got ', bytes size asString ].
-	^ self decodeUtf8Bytes: bytes
+(key size > 65535) ifTrue: [
+	Error signal: 'Invalid GGUF key length (over 65535): ', key size asString ].
+
+(key allSatisfy: [ :ch | ch asciiValue between: 0 and: 127 ]) ifFalse: [
+	Error signal: 'Invalid GGUF key (non-ASCII): ', key ].
+
+^ key
 ]
 
 { #category : 'as yet unclassified' }
 AIGGUFParser >> readString [
 
-	| length bytes |
-	length := self readUInt64.
-	length > self remainingBytes ifTrue: [ Error signal: 'Invalid GGUF string length: ' , length asString ].
-	bytes ifNil: [ Error signal: 'Unexpected end of GGUF file while reading string' ].
-	(bytes size < length) ifTrue: [
-		Error signal: 'Incomplete string: expected ', length asString, ' bytes, got ', bytes size asString ].
+"Read a GGUF string (gguf_string_t): uint64 byte length + UTF-8 bytes"
+| length bytes len |
+length := self readUInt64.
 
-	^ self decodeUtf8Bytes: bytes
+length > self remainingBytes ifTrue: [
+	Error signal: 'Invalid GGUF string length: ', length asString ].
+
+len := self readArrayLength: length. "ensures it fits in SmallInteger"
+
+bytes := stream next: len.
+bytes ifNil: [
+	Error signal: 'Unexpected end of GGUF file while reading string' ].
+(bytes size < len) ifTrue: [
+	Error signal: 'Incomplete string: expected ', len asString, ' bytes, got ', bytes size asString ].
+
+^ self decodeUtf8Bytes: bytes
 ]
 
 { #category : 'as yet unclassified' }
@@ -341,28 +346,25 @@ AIGGUFParser >> readUInt8 [
 
 { #category : 'as yet unclassified' }
 AIGGUFParser >> readValue: valueType [
-	"Read a value based on its type"
 
-	"GGUF metadata value types:
-	0 = UINT8, 1 = INT8, 2 = UINT16, 3 = INT16,
-	4 = UINT32, 5 = INT32, 6 = UINT64, 7 = INT64,
-	8 = FLOAT32, 9 = FLOAT64, 10 = BOOL, 11 = STRING, 12 = ARRAY"
+"GGUF metadata value types (spec):
+0 UINT8, 1 INT8, 2 UINT16, 3 INT16, 4 UINT32, 5 INT32,
+6 FLOAT32, 7 BOOL, 8 STRING, 9 ARRAY, 10 UINT64, 11 INT64, 12 FLOAT64"
+valueType = 0 ifTrue: [ ^ self readUInt8 ].
+valueType = 1 ifTrue: [ ^ self readInt8 ].
+valueType = 2 ifTrue: [ ^ self readUInt16 ].
+valueType = 3 ifTrue: [ ^ self readInt16 ].
+valueType = 4 ifTrue: [ ^ self readUInt32 ].
+valueType = 5 ifTrue: [ ^ self readInt32 ].
+valueType = 6 ifTrue: [ ^ self readFloat32 ].
+valueType = 7 ifTrue: [ ^ self readUInt8 ~= 0 ]. "BOOL"
+valueType = 8 ifTrue: [ ^ self readString ].
+valueType = 9 ifTrue: [ ^ self readArray ].
+valueType = 10 ifTrue: [ ^ self readUInt64 ].
+valueType = 11 ifTrue: [ ^ self readInt64 ].
+valueType = 12 ifTrue: [ ^ self readFloat64 ].
 
-	valueType = 0 ifTrue: [ ^ self readUInt8 ].
-	valueType = 1 ifTrue: [ ^ self readInt8 ].
-	valueType = 2 ifTrue: [ ^ self readUInt16 ].
-	valueType = 3 ifTrue: [ ^ self readInt16 ].
-	valueType = 4 ifTrue: [ ^ self readUInt32 ].
-	valueType = 5 ifTrue: [ ^ self readInt32 ].
-	valueType = 6 ifTrue: [ ^ self readFloat32 ].
-	valueType = 7 ifTrue: [ ^ self readUInt8 ~= 0 ]. "BOOL"
-	valueType = 8 ifTrue: [ ^ self readString ].
-	valueType = 9 ifTrue: [ ^ self readArray ].
-	valueType = 10 ifTrue: [ ^ self readUInt64 ].
-	valueType = 11 ifTrue: [ ^ self readInt64 ].
-	valueType = 12 ifTrue: [ ^ self readFloat64 ].
-	Error signal: 'Unknown GGUF value type: ', valueType asString
-
+Error signal: 'Unknown GGUF value type: ', valueType asString
 ]
 
 { #category : 'as yet unclassified' }
