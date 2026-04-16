@@ -19,19 +19,6 @@ AIModelFormatTest >> testDetectFromFile [
 ]
 
 { #category : 'tests' }
-AIModelFormatTest >> testDetectFromFileSafetensors [
-
-	| file format |
-
-	file := FileLocator temp / 'test-model.safetensors'.
-	file ensureCreateFile.
-
-	[ format := AIModelFormat detectFromFile: file.
-	self assert: format name equals: 'SafeTensors' ]
-		ensure: [ file ensureDelete ]
-]
-
-{ #category : 'tests' }
 AIModelFormatTest >> testDetectFromFileUnknown [
 
 	| file format |
@@ -52,8 +39,7 @@ AIModelFormatTest >> testFormats [
 	formats := AIModelFormat formats.
 
 	self assert: formats notEmpty.
-	self assert: (formats anySatisfy: [ :f | f name = 'GGUF' ]).
-	self assert: (formats anySatisfy: [ :f | f name = 'SafeTensors' ])
+	self assert: (formats anySatisfy: [ :f | f name = 'GGUF' ])
 ]
 
 { #category : 'tests' }
@@ -65,26 +51,4 @@ AIModelFormatTest >> testGGUF [
 
 	self assert: format name equals: 'GGUF'.
 	self assert: format extension equals: 'gguf'
-]
-
-{ #category : 'tests' }
-AIModelFormatTest >> testPyTorch [
-
-	| format |
-
-	format := AIModelFormat pytorch.
-
-	self assert: format name equals: 'PyTorch'.
-	self assert: format extension equals: 'pt'
-]
-
-{ #category : 'tests' }
-AIModelFormatTest >> testSafetensors [
-
-	| format |
-
-	format := AIModelFormat safetensors.
-
-	self assert: format name equals: 'SafeTensors'.
-	self assert: format extension equals: 'safetensors'
 ]

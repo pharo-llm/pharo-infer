@@ -1,6 +1,7 @@
 "
-""I hold configuration values for local inference.
-I define directories, backend preferences, concurrency limits, GPU options, context size, and batch size.""
+I hold configuration values for local inference.
+I define model directories, threading, GPU offload layers, context
+size and batch size used when instantiating a local llama.cpp backend.
 "
 Class {
 	#name : 'AIInferenceConfig',
@@ -8,12 +9,11 @@ Class {
 	#instVars : [
 		'modelsDirectory',
 		'cacheDirectory',
-		'defaultBackend',
 		'maxConcurrentInferences',
-		'enableGPU',
 		'gpuLayers',
 		'contextSize',
-		'batchSize'
+		'batchSize',
+		'threads'
 	],
 	#classInstVars : [
 		'default'
@@ -23,8 +23,7 @@ Class {
 }
 
 { #category : 'accessing' }
-AIInferenceConfig class >> default [ 
-
+AIInferenceConfig class >> default [
 
 	^ default ifNil: [ default := self new ]
 ]
@@ -74,30 +73,6 @@ AIInferenceConfig >> contextSize: anObject [
 ]
 
 { #category : 'accessing' }
-AIInferenceConfig >> defaultBackend [
-
-	^ defaultBackend ifNil: [ defaultBackend := #local ]
-]
-
-{ #category : 'accessing' }
-AIInferenceConfig >> defaultBackend: anObject [
-
-	defaultBackend := anObject
-]
-
-{ #category : 'accessing' }
-AIInferenceConfig >> enableGPU [ 
-
-	^ enableGPU ifNil: [ false ]
-]
-
-{ #category : 'accessing' }
-AIInferenceConfig >> enableGPU: anObject [
-
-	enableGPU := anObject
-]
-
-{ #category : 'accessing' }
 AIInferenceConfig >> gpuLayers [
 
 	^ gpuLayers ifNil: [ 0 ]
@@ -114,7 +89,6 @@ AIInferenceConfig >> initialize [
 
 	super initialize.
 	maxConcurrentInferences := 1.
-	enableGPU := false.
 	gpuLayers := 0
 ]
 
@@ -141,4 +115,16 @@ AIInferenceConfig >> modelsDirectory [
 AIInferenceConfig >> modelsDirectory: anObject [
 
 	modelsDirectory := anObject
+]
+
+{ #category : 'accessing' }
+AIInferenceConfig >> threads [
+
+	^ threads
+]
+
+{ #category : 'accessing' }
+AIInferenceConfig >> threads: anObject [
+
+	threads := anObject
 ]

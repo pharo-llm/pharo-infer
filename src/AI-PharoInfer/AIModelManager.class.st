@@ -50,30 +50,22 @@ AIModelManager >> currentBackend: aBackend [
 
 { #category : 'as yet unclassified' }
 AIModelManager >> discoverModelsInDirectory: aFileReference [
-    "Discover and register all models in the given directory"
-    | discovered |
-    discovered := OrderedCollection new.
+	"Register every .gguf file found directly in aFileReference."
 
-    aFileReference exists ifFalse: [ ^ discovered ].
+	| discovered |
+	discovered := OrderedCollection new.
 
-    (aFileReference children select: [ :file |
-        file basename endsWith: '.gguf' ]) do: [ :file |
-        | model |
-        model := AIModel fromFile: file.
-        model backend: self currentBackend.
-        self registerModel: model.
-        discovered add: model ].
+	aFileReference exists ifFalse: [ ^ discovered ].
 
-    (aFileReference children select: [ :file |
-        file basename endsWith: '.safetensors' ]) do: [ :file |
-        | model |
-        model := AIModel fromFile: file.
-        model backend: self currentBackend.
-        self registerModel: model.
-        discovered add: model ].
+	(aFileReference children select: [ :file |
+		file basename endsWith: '.gguf' ]) do: [ :file |
+		| model |
+		model := AIModel fromFile: file.
+		model backend: self currentBackend.
+		self registerModel: model.
+		discovered add: model ].
 
-    ^ discovered
-
+	^ discovered
 ]
 
 { #category : 'as yet unclassified' }
