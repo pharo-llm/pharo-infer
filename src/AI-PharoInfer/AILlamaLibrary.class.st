@@ -41,30 +41,6 @@ AILlamaLibrary class >> reset [
 	libraryPath := nil
 ]
 
-{ #category : 'configuration' }
-AILlamaLibrary >> macLibraryName [
-
-	^ self class libraryPath ifNil: [ 'libllama.dylib' ]
-]
-
-{ #category : 'configuration' }
-AILlamaLibrary >> unix64LibraryName [
-
-	^ self class libraryPath ifNil: [ 'libllama.so' ]
-]
-
-{ #category : 'configuration' }
-AILlamaLibrary >> unixLibraryName [
-
-	^ self class libraryPath ifNil: [ 'libllama.so' ]
-]
-
-{ #category : 'configuration' }
-AILlamaLibrary >> win32LibraryName [
-
-	^ self class libraryPath ifNil: [ 'llama.dll' ]
-]
-
 { #category : 'backend' }
 AILlamaLibrary >> llamaBackendFree [
 
@@ -77,76 +53,44 @@ AILlamaLibrary >> llamaBackendInit [
 	^ self ffiCall: #( void llama_backend_init ( void ) )
 ]
 
-{ #category : 'model' }
-AILlamaLibrary >> llamaModelFree: modelPtr [
+{ #category : 'batch' }
+AILlamaLibrary >> llamaBatchGetOne: tokensBuffer nTokens: nTokens [
+	"Build a convenience llama_batch wrapping a contiguous token array.
+	 Returned by value: we receive an AILlamaBatch record."
 
-	^ self ffiCall: #( void llama_model_free ( void * modelPtr ) )
+	^ self ffiCall: #( AILlamaBatch llama_batch_get_one (
+		void * tokensBuffer,
+		int32 nTokens ) )
 ]
 
 { #category : 'model' }
-AILlamaLibrary >> llamaModelLoadFromFile: pathString params: paramsStruct [
-	"Load a model file and return an opaque llama_model * pointer.
-	 paramsStruct must be an AILlamaModelParams instance."
-
-	^ self ffiCall: #( void * llama_model_load_from_file (
-		String pathString,
-		AILlamaModelParams paramsStruct ) )
-]
-
-{ #category : 'model' }
-AILlamaLibrary >> llamaModelDefaultParams [
-	"Return a fresh AILlamaModelParams filled with llama.cpp defaults
-	 (by-value return)."
-
-	^ self ffiCall: #( AILlamaModelParams llama_model_default_params ( void ) )
-]
-
-{ #category : 'model' }
-AILlamaLibrary >> llamaModelNCtxTrain: modelPtr [
-	"Maximum training context length supported by the model."
-
-	^ self ffiCall: #( int32 llama_model_n_ctx_train ( void * modelPtr ) )
-]
-
-{ #category : 'model' }
-AILlamaLibrary >> llamaModelNEmbd: modelPtr [
-
-	^ self ffiCall: #( int32 llama_model_n_embd ( void * modelPtr ) )
-]
-
-{ #category : 'model' }
-AILlamaLibrary >> llamaModelGetVocab: modelPtr [
-	"Return the opaque llama_vocab * for this model."
-
-	^ self ffiCall: #( void * llama_model_get_vocab ( void * modelPtr ) )
-]
-
-{ #category : 'context' }
 AILlamaLibrary >> llamaContextDefaultParams [
-	"Return a fresh AILlamaContextParams filled with defaults."
 
-	^ self ffiCall: #( AILlamaContextParams llama_context_default_params ( void ) )
+	| params |
+	params := AILlamaContextParams new.
+	self llamaContextDefaultParamsInto: params getHandle.
+	^ params
 ]
 
-{ #category : 'context' }
-AILlamaLibrary >> llamaInitFromModel: modelPtr params: paramsStruct [
-	"Create a new llama_context * from a model and context params."
+{ #category : 'model' }
+AILlamaLibrary >> llamaContextDefaultParamsInto: aPointer [
 
-	^ self ffiCall: #( void * llama_init_from_model (
-		void * modelPtr,
-		AILlamaContextParams paramsStruct ) )
+	^ self ffiCall: #( void ai_llama_context_default_params ( void * aPointer ) )
+]
+
+{ #category : 'batch' }
+AILlamaLibrary >> llamaDecode: ctxPtr batch: aBatch [
+	"Run the forward pass for the given batch. Returns 0 on success."
+
+	^ self ffiCall: #( int32 llama_decode (
+		void * ctxPtr,
+		AILlamaBatch aBatch ) )
 ]
 
 { #category : 'context' }
 AILlamaLibrary >> llamaFree: ctxPtr [
 
 	^ self ffiCall: #( void llama_free ( void * ctxPtr ) )
-]
-
-{ #category : 'context' }
-AILlamaLibrary >> llamaNCtx: ctxPtr [
-
-	^ self ffiCall: #( uint32 llama_n_ctx ( void * ctxPtr ) )
 ]
 
 { #category : 'context' }
@@ -166,91 +110,107 @@ AILlamaLibrary >> llamaGetLogits: ctxPtr [
 ]
 
 { #category : 'context' }
+AILlamaLibrary >> llamaInitFromModel: modelPtr params: paramsStruct [
+	"Create a new llama_context * from a model and context params."
+
+	^ self ffiCall: #( void * llama_init_from_model (
+		void * modelPtr,
+		AILlamaContextParams paramsStruct ) )
+]
+
+{ #category : 'context' }
 AILlamaLibrary >> llamaKvSelfClear: ctxPtr [
 	"Clear the KV cache (new conversation)."
 
 	^ self ffiCall: #( void llama_kv_self_clear ( void * ctxPtr ) )
 ]
 
-{ #category : 'vocab' }
-AILlamaLibrary >> llamaVocabNTokens: vocabPtr [
+{ #category : 'model' }
+AILlamaLibrary >> llamaModelDefaultParams [
 
-	^ self ffiCall: #( int32 llama_vocab_n_tokens ( void * vocabPtr ) )
+	| params |
+	params := AILlamaModelParams new.
+	self llamaModelDefaultParamsInto: params getHandle.
+	^ params
 ]
 
-{ #category : 'vocab' }
-AILlamaLibrary >> llamaVocabBos: vocabPtr [
+{ #category : 'context' }
+AILlamaLibrary >> llamaModelDefaultParamsInto: aPointer [
 
-	^ self ffiCall: #( int32 llama_vocab_bos ( void * vocabPtr ) )
+	^ self ffiCall: #( void ai_llama_model_default_params ( void * aPointer ) )
 ]
 
-{ #category : 'vocab' }
-AILlamaLibrary >> llamaVocabEos: vocabPtr [
+{ #category : 'model' }
+AILlamaLibrary >> llamaModelFree: modelPtr [
 
-	^ self ffiCall: #( int32 llama_vocab_eos ( void * vocabPtr ) )
+	^ self ffiCall: #( void llama_model_free ( void * modelPtr ) )
 ]
 
-{ #category : 'vocab' }
-AILlamaLibrary >> llamaVocabIsEog: vocabPtr token: aToken [
+{ #category : 'model' }
+AILlamaLibrary >> llamaModelGetVocab: modelPtr [
+	"Return the opaque llama_vocab * for this model."
 
-	^ self ffiCall: #( bool llama_vocab_is_eog (
-		void * vocabPtr,
-		int32 aToken ) )
+	^ self ffiCall: #( void * llama_model_get_vocab ( void * modelPtr ) )
 ]
 
-{ #category : 'tokenization' }
-AILlamaLibrary >> llamaTokenize: vocabPtr text: textString textLen: textLen tokens: tokensBuffer nTokensMax: nTokensMax addSpecial: addSpecial parseSpecial: parseSpecial [
-	"Tokenize a UTF-8 string into tokensBuffer (Int32 *).
-	 Returns number of tokens written on success, or a negative count
-	 (-needed) when the buffer is too small."
+{ #category : 'model' }
+AILlamaLibrary >> llamaModelLoadFromFile: pathString params: paramsStruct [
+	"Load a model file and return an opaque llama_model * pointer.
+	 paramsStruct must be an AILlamaModelParams instance."
 
-	^ self ffiCall: #( int32 llama_tokenize (
-		void * vocabPtr,
-		String textString,
-		int32 textLen,
-		void * tokensBuffer,
-		int32 nTokensMax,
-		bool addSpecial,
-		bool parseSpecial ) )
+	^ self ffiCall: #( void * llama_model_load_from_file (
+		String pathString,
+		AILlamaModelParams paramsStruct ) )
 ]
 
-{ #category : 'tokenization' }
-AILlamaLibrary >> llamaTokenToPiece: vocabPtr token: aToken buf: aBuffer length: bufLen lstrip: lstrip special: special [
-	"Detokenize a single token ID into a UTF-8 fragment in aBuffer.
-	 Returns number of bytes written, or -needed if the buffer is too small."
+{ #category : 'model' }
+AILlamaLibrary >> llamaModelNCtxTrain: modelPtr [
+	"Maximum training context length supported by the model."
 
-	^ self ffiCall: #( int32 llama_token_to_piece (
-		void * vocabPtr,
-		int32 aToken,
-		void * aBuffer,
-		int32 bufLen,
-		int32 lstrip,
-		bool special ) )
+	^ self ffiCall: #( int32 llama_model_n_ctx_train ( void * modelPtr ) )
 ]
 
-{ #category : 'batch' }
-AILlamaLibrary >> llamaBatchGetOne: tokensBuffer nTokens: nTokens [
-	"Build a convenience llama_batch wrapping a contiguous token array.
-	 Returned by value: we receive an AILlamaBatch record."
+{ #category : 'model' }
+AILlamaLibrary >> llamaModelNEmbd: modelPtr [
 
-	^ self ffiCall: #( AILlamaBatch llama_batch_get_one (
-		void * tokensBuffer,
-		int32 nTokens ) )
+	^ self ffiCall: #( int32 llama_model_n_embd ( void * modelPtr ) )
 ]
 
-{ #category : 'batch' }
-AILlamaLibrary >> llamaDecode: ctxPtr batch: aBatch [
-	"Run the forward pass for the given batch. Returns 0 on success."
+{ #category : 'context' }
+AILlamaLibrary >> llamaNCtx: ctxPtr [
 
-	^ self ffiCall: #( int32 llama_decode (
-		void * ctxPtr,
-		AILlamaBatch aBatch ) )
+	^ self ffiCall: #( uint32 llama_n_ctx ( void * ctxPtr ) )
 ]
 
 { #category : 'sampling' }
+AILlamaLibrary >> llamaSamplerAccept: samplerPtr token: aToken [
+
+	^ self ffiCall: #( void llama_sampler_accept (
+		void * samplerPtr,
+		int32 aToken ) )
+]
+
+{ #category : 'sampling' }
+AILlamaLibrary >> llamaSamplerChainAdd: chainPtr sampler: samplerPtr [
+
+	^ self ffiCall: #( void llama_sampler_chain_add (
+		void * chainPtr,
+		void * samplerPtr ) )
+]
+
+{ #category : 'model' }
 AILlamaLibrary >> llamaSamplerChainDefaultParams [
 
-	^ self ffiCall: #( AILlamaSamplerChainParams llama_sampler_chain_default_params ( void ) )
+	| params |
+	params := AILlamaSamplerChainParams new.
+	self llamaSamplerChainDefaultParamsInto: params getHandle.
+	^ params
+]
+
+{ #category : 'model' }
+AILlamaLibrary >> llamaSamplerChainDefaultParamsInto: aPointer [
+
+	^ self ffiCall: #( void ai_llama_sampler_chain_default_params ( void * aPointer ) )
 ]
 
 { #category : 'sampling' }
@@ -261,11 +221,15 @@ AILlamaLibrary >> llamaSamplerChainInit: paramsStruct [
 ]
 
 { #category : 'sampling' }
-AILlamaLibrary >> llamaSamplerChainAdd: chainPtr sampler: samplerPtr [
+AILlamaLibrary >> llamaSamplerFree: samplerPtr [
 
-	^ self ffiCall: #( void llama_sampler_chain_add (
-		void * chainPtr,
-		void * samplerPtr ) )
+	^ self ffiCall: #( void llama_sampler_free ( void * samplerPtr ) )
+]
+
+{ #category : 'sampling' }
+AILlamaLibrary >> llamaSamplerInitDist: seed [
+
+	^ self ffiCall: #( void * llama_sampler_init_dist ( uint32 seed ) )
 ]
 
 { #category : 'sampling' }
@@ -295,12 +259,6 @@ AILlamaLibrary >> llamaSamplerInitTopP: p minKeep: minKeep [
 ]
 
 { #category : 'sampling' }
-AILlamaLibrary >> llamaSamplerInitDist: seed [
-
-	^ self ffiCall: #( void * llama_sampler_init_dist ( uint32 seed ) )
-]
-
-{ #category : 'sampling' }
 AILlamaLibrary >> llamaSamplerSample: samplerPtr context: ctxPtr idx: idx [
 
 	^ self ffiCall: #( int32 llama_sampler_sample (
@@ -309,16 +267,82 @@ AILlamaLibrary >> llamaSamplerSample: samplerPtr context: ctxPtr idx: idx [
 		int32 idx ) )
 ]
 
-{ #category : 'sampling' }
-AILlamaLibrary >> llamaSamplerAccept: samplerPtr token: aToken [
+{ #category : 'tokenization' }
+AILlamaLibrary >> llamaTokenToPiece: vocabPtr token: aToken buf: aBuffer length: bufLen lstrip: lstrip special: special [
+	"Detokenize a single token ID into a UTF-8 fragment in aBuffer.
+	 Returns number of bytes written, or -needed if the buffer is too small."
 
-	^ self ffiCall: #( void llama_sampler_accept (
-		void * samplerPtr,
+	^ self ffiCall: #( int32 llama_token_to_piece (
+		void * vocabPtr,
+		int32 aToken,
+		void * aBuffer,
+		int32 bufLen,
+		int32 lstrip,
+		bool special ) )
+]
+
+{ #category : 'tokenization' }
+AILlamaLibrary >> llamaTokenize: vocabPtr text: textString textLen: textLen tokens: tokensBuffer nTokensMax: nTokensMax addSpecial: addSpecial parseSpecial: parseSpecial [
+	"Tokenize a UTF-8 string into tokensBuffer (Int32 *).
+	 Returns number of tokens written on success, or a negative count
+	 (-needed) when the buffer is too small."
+
+	^ self ffiCall: #( int32 llama_tokenize (
+		void * vocabPtr,
+		String textString,
+		int32 textLen,
+		void * tokensBuffer,
+		int32 nTokensMax,
+		bool addSpecial,
+		bool parseSpecial ) )
+]
+
+{ #category : 'vocab' }
+AILlamaLibrary >> llamaVocabBos: vocabPtr [
+
+	^ self ffiCall: #( int32 llama_vocab_bos ( void * vocabPtr ) )
+]
+
+{ #category : 'vocab' }
+AILlamaLibrary >> llamaVocabEos: vocabPtr [
+
+	^ self ffiCall: #( int32 llama_vocab_eos ( void * vocabPtr ) )
+]
+
+{ #category : 'vocab' }
+AILlamaLibrary >> llamaVocabIsEog: vocabPtr token: aToken [
+
+	^ self ffiCall: #( bool llama_vocab_is_eog (
+		void * vocabPtr,
 		int32 aToken ) )
 ]
 
-{ #category : 'sampling' }
-AILlamaLibrary >> llamaSamplerFree: samplerPtr [
+{ #category : 'vocab' }
+AILlamaLibrary >> llamaVocabNTokens: vocabPtr [
 
-	^ self ffiCall: #( void llama_sampler_free ( void * samplerPtr ) )
+	^ self ffiCall: #( int32 llama_vocab_n_tokens ( void * vocabPtr ) )
+]
+
+{ #category : 'configuration' }
+AILlamaLibrary >> macLibraryName [
+
+	^ self class libraryPath ifNil: [ 'libllama.dylib' ]
+]
+
+{ #category : 'configuration' }
+AILlamaLibrary >> unix64LibraryName [
+
+	^ self class libraryPath ifNil: [ 'libllama.so' ]
+]
+
+{ #category : 'configuration' }
+AILlamaLibrary >> unixLibraryName [
+
+	^ self class libraryPath ifNil: [ 'libllama.so' ]
+]
+
+{ #category : 'configuration' }
+AILlamaLibrary >> win32LibraryName [
+
+	^ self class libraryPath ifNil: [ 'llama.dll' ]
 ]

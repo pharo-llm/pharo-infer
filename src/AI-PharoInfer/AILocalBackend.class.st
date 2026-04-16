@@ -34,10 +34,100 @@ Class {
 	#package : 'AI-PharoInfer'
 }
 
+{ #category : 'private' }
+AILocalBackend >> buildSampler: options [
+
+	| lib chainParams chain seed |
+	lib := self library.
+	chainParams := lib llamaSamplerChainDefaultParams.
+	chain := lib llamaSamplerChainInit: chainParams.
+
+	options topK > 0 ifTrue: [
+		lib
+			llamaSamplerChainAdd: chain
+			sampler: (lib llamaSamplerInitTopK: options topK) ].
+
+	options topP < 1.0 ifTrue: [
+		lib
+			llamaSamplerChainAdd: chain
+			sampler: (lib llamaSamplerInitTopP: options topP minKeep: 1) ].
+
+	options temperature > 0.0
+		ifTrue: [
+			lib
+				llamaSamplerChainAdd: chain
+				sampler: (lib llamaSamplerInitTemp: options temperature).
+			seed := options seed ifNil: [ 16rFFFFFFFF ].
+			lib
+				llamaSamplerChainAdd: chain
+				sampler: (lib llamaSamplerInitDist: seed) ]
+		ifFalse: [
+			lib
+				llamaSamplerChainAdd: chain
+				sampler: lib llamaSamplerInitGreedy ].
+
+	^ chain
+]
+
 { #category : 'accessing' }
 AILocalBackend >> contextSize [
 
 	^ contextSize ifNil: [ 2048 ]
+]
+
+{ #category : 'accessing' }
+AILocalBackend >> contextSize: anInteger [
+
+	contextSize := anInteger
+]
+
+{ #category : 'private' }
+AILocalBackend >> decodeTokens: tokenArray context: ctxPtr [
+
+	| lib buffer batch rc |
+	lib := self library.
+	buffer := FFIExternalArray
+		externalNewType: 'int32'
+		size: tokenArray size.
+	[
+		1 to: tokenArray size do: [ :i |
+			buffer at: i put: (tokenArray at: i) ].
+		batch := lib
+			llamaBatchGetOne: buffer getHandle
+			nTokens: tokenArray size.
+		rc := lib llamaDecode: ctxPtr batch: batch.
+		rc ~= 0 ifTrue: [
+			Error signal: 'llama_decode failed with code ', rc asString ] ]
+		ensure: [ buffer free ]
+]
+
+{ #category : 'private' }
+AILocalBackend >> detokenize: tokenId vocab: vocabPtr [
+
+	| lib buf written result |
+	lib := self library.
+	buf := ByteArray new: 64.
+	written := lib
+		llamaTokenToPiece: vocabPtr
+		token: tokenId
+		buf: buf
+		length: buf size
+		lstrip: 0
+		special: false.
+	written < 0 ifTrue: [
+		buf := ByteArray new: written negated.
+		written := lib
+			llamaTokenToPiece: vocabPtr
+			token: tokenId
+			buf: buf
+			length: buf size
+			lstrip: 0
+			special: false ].
+	written <= 0 ifTrue: [ ^ '' ].
+	result := buf copyFrom: 1 to: written.
+	^ [ result utf8Decoded ]
+		on: Error
+		do: [ :e | result asString ]
 ]
 
 { #category : 'accessing' }
@@ -50,12 +140,6 @@ AILocalBackend >> embeddings [
 AILocalBackend >> embeddings: aBoolean [
 
 	embeddings := aBoolean
-]
-
-{ #category : 'accessing' }
-AILocalBackend >> contextSize: anInteger [
-
-	contextSize := anInteger
 ]
 
 { #category : 'private' }
@@ -203,88 +287,39 @@ AILocalBackend >> nThreads: anInteger [
 	nThreads := anInteger
 ]
 
-{ #category : 'private' }
-AILocalBackend >> buildSampler: options [
+{ #category : 'operations' }
+AILocalBackend >> streamText: prompt model: aModel options: options onToken: aBlock [
 
-	| lib chainParams chain seed |
+	| handle vocabPtr lib tokens sampler generated maxTokens nextToken piece |
+	self ensureModelLoaded: aModel.
+	handle := loadedModels at: aModel name.
 	lib := self library.
-	chainParams := lib llamaSamplerChainDefaultParams.
-	chain := lib llamaSamplerChainInit: chainParams.
 
-	options topK > 0 ifTrue: [
-		lib
-			llamaSamplerChainAdd: chain
-			sampler: (lib llamaSamplerInitTopK: options topK) ].
+	vocabPtr := lib llamaModelGetVocab: handle modelPtr.
+	tokens := self tokenizeString: prompt vocab: vocabPtr addSpecial: true.
+	self decodeTokens: tokens context: handle ctxPtr.
 
-	options topP < 1.0 ifTrue: [
-		lib
-			llamaSamplerChainAdd: chain
-			sampler: (lib llamaSamplerInitTopP: options topP minKeep: 1) ].
+	sampler := self buildSampler: options.
+	maxTokens := options maxTokens.
+	generated := 0.
 
-	options temperature > 0.0
-		ifTrue: [
-			lib
-				llamaSamplerChainAdd: chain
-				sampler: (lib llamaSamplerInitTemp: options temperature).
-			seed := options seed ifNil: [ 16rFFFFFFFF ].
-			lib
-				llamaSamplerChainAdd: chain
-				sampler: (lib llamaSamplerInitDist: seed) ]
-		ifFalse: [
-			lib
-				llamaSamplerChainAdd: chain
-				sampler: lib llamaSamplerInitGreedy ].
-
-	^ chain
-]
-
-{ #category : 'private' }
-AILocalBackend >> decodeTokens: tokenArray context: ctxPtr [
-
-	| lib buffer batch rc |
-	lib := self library.
-	buffer := FFIExternalArray
-		externalNewType: 'int32'
-		size: tokenArray size.
 	[
-		1 to: tokenArray size do: [ :i |
-			buffer at: i put: (tokenArray at: i) ].
-		batch := lib
-			llamaBatchGetOne: buffer getHandle
-			nTokens: tokenArray size.
-		rc := lib llamaDecode: ctxPtr batch: batch.
-		rc ~= 0 ifTrue: [
-			Error signal: 'llama_decode failed with code ', rc asString ] ]
-		ensure: [ buffer free ]
-]
+		[ generated < maxTokens ] whileTrue: [
+			nextToken := lib
+				llamaSamplerSample: sampler
+				context: handle ctxPtr
+				idx: -1.
+			(lib llamaVocabIsEog: vocabPtr token: nextToken) ifTrue: [ ^ self ].
 
-{ #category : 'private' }
-AILocalBackend >> detokenize: tokenId vocab: vocabPtr [
+			lib llamaSamplerAccept: sampler token: nextToken.
+			piece := self detokenize: nextToken vocab: vocabPtr.
+			piece ifNotEmpty: [ aBlock value: piece ].
 
-	| lib buf written result |
-	lib := self library.
-	buf := ByteArray new: 64.
-	written := lib
-		llamaTokenToPiece: vocabPtr
-		token: tokenId
-		buf: buf
-		length: buf size
-		lstrip: 0
-		special: false.
-	written < 0 ifTrue: [
-		buf := ByteArray new: written negated.
-		written := lib
-			llamaTokenToPiece: vocabPtr
-			token: tokenId
-			buf: buf
-			length: buf size
-			lstrip: 0
-			special: false ].
-	written <= 0 ifTrue: [ ^ '' ].
-	result := buf copyFrom: 1 to: written.
-	^ [ result utf8Decoded ]
-		on: Error
-		do: [ :e | result asString ]
+			self
+				decodeTokens: (Array with: nextToken)
+				context: handle ctxPtr.
+			generated := generated + 1 ] ]
+		ensure: [ lib llamaSamplerFree: sampler ]
 ]
 
 { #category : 'private' }
@@ -324,41 +359,6 @@ AILocalBackend >> tokenizeString: aString vocab: vocabPtr addSpecial: addSpecial
 		1 to: written do: [ :i | tokens at: i put: (buffer at: i) ] ]
 		ensure: [ buffer free ].
 	^ tokens
-]
-
-{ #category : 'operations' }
-AILocalBackend >> streamText: prompt model: aModel options: options onToken: aBlock [
-
-	| handle vocabPtr lib tokens sampler generated maxTokens nextToken piece |
-	self ensureModelLoaded: aModel.
-	handle := loadedModels at: aModel name.
-	lib := self library.
-
-	vocabPtr := lib llamaModelGetVocab: handle modelPtr.
-	tokens := self tokenizeString: prompt vocab: vocabPtr addSpecial: true.
-	self decodeTokens: tokens context: handle ctxPtr.
-
-	sampler := self buildSampler: options.
-	maxTokens := options maxTokens.
-	generated := 0.
-
-	[
-		[ generated < maxTokens ] whileTrue: [
-			nextToken := lib
-				llamaSamplerSample: sampler
-				context: handle ctxPtr
-				idx: -1.
-			(lib llamaVocabIsEog: vocabPtr token: nextToken) ifTrue: [ ^ self ].
-
-			lib llamaSamplerAccept: sampler token: nextToken.
-			piece := self detokenize: nextToken vocab: vocabPtr.
-			piece ifNotEmpty: [ aBlock value: piece ].
-
-			self
-				decodeTokens: (Array with: nextToken)
-				context: handle ctxPtr.
-			generated := generated + 1 ] ]
-		ensure: [ lib llamaSamplerFree: sampler ]
 ]
 
 { #category : 'operations' }

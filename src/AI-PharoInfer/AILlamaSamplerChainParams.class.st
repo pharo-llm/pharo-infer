@@ -5,6 +5,9 @@ bool field (no_perf) in current releases.
 Class {
 	#name : 'AILlamaSamplerChainParams',
 	#superclass : 'FFIExternalStructure',
+	#classVars : [
+		'OFFSET_NO_PERF'
+	],
 	#category : 'AI-PharoInfer',
 	#package : 'AI-PharoInfer'
 }
@@ -12,5 +15,17 @@ Class {
 { #category : 'field definition' }
 AILlamaSamplerChainParams class >> fieldsDesc [
 
-	^ #( bool no_perf )
+^ #( uint8 no_perf )
+]
+
+{ #category : 'accessing - structure variables' }
+AILlamaSamplerChainParams >> no_perf [
+	"This method was automatically generated"
+	^handle unsignedByteAt: OFFSET_NO_PERF
+]
+
+{ #category : 'accessing - structure variables' }
+AILlamaSamplerChainParams >> no_perf: anObject [
+	"This method was automatically generated"
+	handle unsignedByteAt: OFFSET_NO_PERF put: anObject
 ]
