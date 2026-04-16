@@ -231,7 +231,7 @@ AILocalBackend >> loadModel: aModel [
 	path := aModel path fullName.
 
 	modelParams := self library llamaModelDefaultParams.
-	modelParams nGpuLayers: self nGpuLayers.
+	modelParams n_gpu_layers: self nGpuLayers.
 
 	modelPtr := self library
 		llamaModelLoadFromFile: path
@@ -240,12 +240,12 @@ AILocalBackend >> loadModel: aModel [
 		Error signal: 'llama_model_load_from_file failed for: ', path ].
 
 	ctxParams := self library llamaContextDefaultParams.
-	ctxParams
-		nCtx: self contextSize;
-		nBatch: 512;
-		nThreads: self nThreads;
-		nThreadsBatch: self nThreads;
-		embeddings: self embeddings.
+ctxParams
+	n_ctx: self contextSize;
+	n_batch: 512;
+	n_threads: self nThreads;
+	n_threads_batch: self nThreads;
+	embeddings: self embeddings.
 
 	ctxPtr := self library
 		llamaInitFromModel: modelPtr
