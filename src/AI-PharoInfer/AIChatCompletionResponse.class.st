@@ -1,3 +1,7 @@
+"
+""I represent the result of a chat completion request.
+I store the generated assistant message together with metadata such as id, model, finish reason, usage, and creation time.""
+"
 Class {
 	#name : 'AIChatCompletionResponse',
 	#superclass : 'Object',

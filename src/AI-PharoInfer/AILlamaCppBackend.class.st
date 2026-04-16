@@ -1,3 +1,7 @@
+"
+""I am a backend that talks to a llama.cpp server over HTTP.
+I send completion and embedding requests to the server and support both normal and streaming text generation.""
+"
 Class {
 	#name : 'AILlamaCppBackend',
 	#superclass : 'AIBackend',

@@ -1,3 +1,7 @@
+"
+""I provide the main entry point for text generation, streaming, and embeddings.
+I resolve models through a model manager and delegate inference work to the configured backend.""
+"
 Class {
 	#name : 'AIInferenceEngine',
 	#superclass : 'Object',

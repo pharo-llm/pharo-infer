@@ -1,3 +1,7 @@
+"
+""I store configurable generation parameters for inference.
+These include temperature, top-p, top-k, max tokens, penalties, stop sequences, seed, and streaming behavior.""
+"
 Class {
 	#name : 'AIGenerationOptions',
 	#superclass : 'Object',

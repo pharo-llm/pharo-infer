@@ -1,3 +1,7 @@
+"
+""I represent an AI model loaded from a file or registered by name.
+I store metadata such as path, format, size, backend, and loaded state, and I delegate load/unload behavior to the backend.""
+"
 Class {
 	#name : 'AIModel',
 	#superclass : 'Object',

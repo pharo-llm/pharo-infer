@@ -1,3 +1,7 @@
+"
+""I hold configuration values for local inference.
+I define directories, backend preferences, concurrency limits, GPU options, context size, and batch size.""
+"
 Class {
 	#name : 'AIInferenceConfig',
 	#superclass : 'Object',

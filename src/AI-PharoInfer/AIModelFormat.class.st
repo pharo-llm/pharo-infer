@@ -1,3 +1,7 @@
+"
+""I describe a supported model file format.
+Instances define a format name, file extension, and human-readable description, and the class provides helpers for detecting formats from files.""
+"
 Class {
 	#name : 'AIModelFormat',
 	#superclass : 'Object',

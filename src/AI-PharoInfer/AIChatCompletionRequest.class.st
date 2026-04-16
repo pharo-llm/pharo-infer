@@ -1,3 +1,7 @@
+"
+""I represent a chat completion request.
+I store the target model, the message history, generation options, and whether the response should be streamed.""
+"
 Class {
 	#name : 'AIChatCompletionRequest',
 	#superclass : 'Object',

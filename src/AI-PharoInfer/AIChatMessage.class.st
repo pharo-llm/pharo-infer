@@ -1,3 +1,7 @@
+"
+""I represent a single chat message with a role, content, and optional name.
+I am used to build chat conversations for request and response handling.""
+"
 Class {
 	#name : 'AIChatMessage',
 	#superclass : 'Object',

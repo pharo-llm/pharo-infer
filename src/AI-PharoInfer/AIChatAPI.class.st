@@ -1,3 +1,7 @@
+"
+""I provide a chat-oriented API on top of the inference engine.
+I transform structured chat messages into a prompt, invoke completion or streaming, and wrap results into chat response objects.""
+"
 Class {
 	#name : 'AIChatAPI',
 	#superclass : 'Object',

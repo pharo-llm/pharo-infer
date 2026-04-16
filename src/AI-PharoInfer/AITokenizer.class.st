@@ -1,3 +1,7 @@
+"
+""I convert text to token IDs and tokens back to text.
+I manage vocabulary, reverse vocabulary, and special tokens, using a simple tokenization strategy.""
+"
 Class {
 	#name : 'AITokenizer',
 	#superclass : 'Object',

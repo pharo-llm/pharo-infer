@@ -1,3 +1,7 @@
+"
+""I generate vector embeddings for text using a specific model and backend.
+I also provide helper operations such as batch embedding, normalization, and cosine similarity.""
+"
 Class {
 	#name : 'AIEmbeddingsGenerator',
 	#superclass : 'Object',

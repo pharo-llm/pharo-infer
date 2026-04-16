@@ -1,3 +1,7 @@
+"
+""I parse GGUF model files and extract header and metadata information.
+I provide low-level binary readers for GGUF value types and can expose tokenizer-related metadata.""
+"
 Class {
 	#name : 'AIGGUFParser',
 	#superclass : 'Object',

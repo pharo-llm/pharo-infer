@@ -1,3 +1,7 @@
+"
+""I manage the registration, discovery, loading, and unloading of AI models.
+I keep a registry of known models, track the current backend, and can discover models from a directory.""
+"
 Class {
 	#name : 'AIModelManager',
 	#superclass : 'Object',

@@ -14,6 +14,9 @@ engine backend: manager currentBackend.
 engine complete: 'Hello World !' model: model name.
 ```
 
+
+""I am a local inference backend for running models directly inside the image.
+I load model data, configure a tokenizer, and provide simplified implementations of text generation, streaming, and embeddings.""
 "
 Class {
 	#name : 'AILocalBackend',

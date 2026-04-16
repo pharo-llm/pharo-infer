@@ -1,3 +1,7 @@
+"
+""I am an abstract backend for AI inference.
+Subclasses implement model loading, text generation, streaming, and embeddings generation.""
+"
 Class {
 	#name : 'AIBackend',
 	#superclass : 'Object',
