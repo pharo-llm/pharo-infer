@@ -5,30 +5,30 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/pharo-llm/PharoInfer/pulls)
 [![Status: Active](https://img.shields.io/badge/status-active-success.svg)](https://github.com/pharo-llm/PharoInfer)
 
-PharoInfer is a production-ready inference engine for Pharo Smalltalk that brings Large Language Models (LLMs) directly into the Pharo environment. It supports local inference, multiple model formats, streaming text generation, embeddings, and an OpenAI-compatible chat API, with backends such as native Pharo, Ollama, and llama.cpp.
+PharoInfer is a **fully in-image** inference engine for Pharo
+Smalltalk. It loads a GGUF model file directly from disk and drives
+[llama.cpp](https://github.com/ggml-org/llama.cpp) through UFFI — there
+is no HTTP server, no Ollama bridge, and no subprocess. Talk to the
+model straight from the image.
 
-## Highlights
+## Requirements
 
-- **Model management**: load, unload, and run multiple models.
-- **Multiple formats**: GGUF, SafeTensors, PyTorch.
-- **Chat & completions**: OpenAI-compatible chat completion API.
-- **Embeddings**: semantic search and similarity.
-- **Streaming**: token-by-token generation.
-- **Backends**: local Pharo, Ollama, llama.cpp.
+- Pharo 13 or 14 (UFFI must be available).
+- A shared build of llama.cpp (`libllama.so` on Linux,
+  `libllama.dylib` on macOS, `llama.dll` on Windows).
+  The bindings target the modern API (b4000 and later).
+- A `.gguf` model file.
 
-## Installation
+### Point PharoInfer at your libllama
 
-### Stable
+Pharo will look for `libllama.so` (or the platform equivalent) on the
+default library search path. To override, pin it from the image:
 
 ```smalltalk
-Metacello new
-  githubUser: 'pharo-llm' project: 'pharo-infer' commitish: 'X.X.X' path: 'src';
-  baseline: 'AIPharoInfer';
-  load.
+AILlamaLibrary libraryPath: '/home/me/llama.cpp/build/libllama.so'.
 ```
 
-
-### Development
+## Installation
 
 ```smalltalk
 Metacello new
@@ -39,33 +39,61 @@ Metacello new
 
 ## Quick Start
 
-### Text Completion
-
-```smalltalk
-model := AIModel fromFile: '/path/to/model.gguf' asFileReference.
-model backend: AILocalBackend new.
-AIModelManager default registerModel: model.
-engine := AIInferenceEngine default.
-engine complete: 'Tell me a story about' model: 'your-model-name'.
-```
+### Text completion, in-image
 
 ```smalltalk
 | manager engine model |
 manager := AIModelManager default.
-manager currentBackend: AILlamaCppBackend new.
-model := manager loadModel: (FileLocator home / 'path' / 'model.gguf') fullName.
+manager currentBackend: AILocalBackend new.
+
+model := manager loadModel:
+    (FileLocator home / 'models' / 'tiny.gguf') fullName.
+
 engine := AIInferenceEngine default.
 engine backend: manager currentBackend.
-engine complete: 'Hello World !' model: model name.
+engine complete: 'Hello from Pharo!' model: model name.
 ```
 
-### Chat Completion
+### Streaming
 
 ```smalltalk
+engine
+    stream: 'Tell me a joke about Smalltalk'
+    model: model name
+    onToken: [ :piece | Transcript show: piece ].
+```
+
+### Chat
+
+```smalltalk
+| request |
 request := AIChatCompletionRequest
-  model: 'your-model-name'
-  messages: {
-    AIChatMessage system: 'You are a helpful AI assistant'.
-    AIChatMessage user: 'What is Smalltalk?' }.
+    model: model name
+    messages: {
+        AIChatMessage system: 'You are a helpful AI assistant.'.
+        AIChatMessage user: 'What is Smalltalk?' }.
 AIChatAPI default complete: request.
 ```
+
+### GPU offload and threads
+
+```smalltalk
+AILocalBackend new
+    nGpuLayers: 999; "offload all layers"
+    nThreads: 8;
+    contextSize: 4096.
+```
+
+## Architecture
+
+- `AILlamaLibrary` — `FFILibrary` mapping the llama.cpp C entry points.
+- `AILlamaModelParams`, `AILlamaContextParams`, `AILlamaBatch`,
+  `AILlamaSamplerChainParams` — `FFIExternalStructure` mirrors of the
+  by-value records used by llama.cpp.
+- `AILocalBackend` — drives llama.cpp: loads a model, runs
+  tokenization + decode + sampling, and detokenizes back to UTF-8.
+- `AILocalModelHandle` — owns the opaque `(model *, context *)` pair
+  and frees it on unload.
+- `AIGGUFParser` — optional pre-flight reader for GGUF metadata
+  (header, vocab, special tokens) without loading the model.
+- `AIInferenceEngine`, `AIChatAPI` — high-level entry points.

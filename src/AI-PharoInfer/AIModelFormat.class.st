@@ -1,6 +1,7 @@
 "
-""I describe a supported model file format.
-Instances define a format name, file extension, and human-readable description, and the class provides helpers for detecting formats from files.""
+I describe a supported model file format. The local llama.cpp backend
+only accepts GGUF, so that is the only concrete format exposed. Unknown
+files are still representable so callers can report a clean error.
 "
 Class {
 	#name : 'AIModelFormat',
@@ -17,10 +18,9 @@ Class {
 	#package : 'AI-PharoInfer'
 }
 
-{ #category : 'as yet unclassified' }
-AIModelFormat class >> detectFromFile: aFileReference [ 
+{ #category : 'instance creation' }
+AIModelFormat class >> detectFromFile: aFileReference [
 
-	"Detect the model format from a file"
 	| ext |
 	ext := aFileReference extension.
 	^ self formats
@@ -28,28 +28,25 @@ AIModelFormat class >> detectFromFile: aFileReference [
 		ifNone: [ self unknown ]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'instance creation' }
 AIModelFormat class >> formats [
 
-	"Return all registered formats"
 	^ formats ifNil: [ formats := self initializeFormats ]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'instance creation' }
 AIModelFormat class >> gguf [
 
-	"GGUF format (GPT-Generated Unified Format)"
 	^ self named: 'GGUF' extension: 'gguf' description: 'GPT-Generated Unified Format for llama.cpp'
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'instance creation' }
 AIModelFormat class >> initializeFormats [
 
-	"Initialize the list of supported formats"
-	^ OrderedCollection with: self gguf with: self safetensors with: self pytorch
+	^ OrderedCollection with: self gguf
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'instance creation' }
 AIModelFormat class >> named: aName extension: anExtension description: aDescription [
 
 	^ self new
@@ -59,24 +56,9 @@ AIModelFormat class >> named: aName extension: anExtension description: aDescrip
 		yourself
 ]
 
-{ #category : 'as yet unclassified' }
-AIModelFormat class >> pytorch [
-
-	"PyTorch format"
-	^ self named: 'PyTorch' extension: 'pt' description: 'PyTorch model format'
-]
-
-{ #category : 'as yet unclassified' }
-AIModelFormat class >> safetensors [
-
-	"Safetensors format"
-	^ self named: 'SafeTensors' extension: 'safetensors' description: 'Safe serialization format for ML models'
-]
-
-{ #category : 'as yet unclassified' }
+{ #category : 'instance creation' }
 AIModelFormat class >> unknown [
 
-	"Unknown format"
 	^ self named: 'Unknown' extension: '' description: 'Unknown model format'
 ]
 
@@ -93,7 +75,7 @@ AIModelFormat >> description: anObject [
 ]
 
 { #category : 'accessing' }
-AIModelFormat >> extension [ 
+AIModelFormat >> extension [
 
 	^ extension
 ]

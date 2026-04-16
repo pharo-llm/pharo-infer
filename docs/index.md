@@ -1,382 +1,178 @@
 # PharoInfer
 
-A comprehensive, production-ready inference engine for Pharo Smalltalk that brings the power of Large Language Models (LLMs) directly into your Pharo environment. PharoInfer supports all the features you'd expect from modern inference engines like Ollama and llama.cpp, with native Pharo integration.
+A fully in-image inference engine for Pharo Smalltalk. PharoInfer loads
+a GGUF model file directly from disk and drives
+[llama.cpp](https://github.com/ggml-org/llama.cpp) through UFFI. There
+is no HTTP server, no Ollama bridge, no subprocess — you interact with
+the model straight from the Pharo image.
 
 ## Features
 
-### Core Capabilities
+- **In-image inference** — a live `libllama` runs inside the Pharo VM
+  process via UFFI.
+- **GGUF models** — loaded directly from disk, mmap-backed when the
+  library is compiled with mmap support.
+- **Text generation** — synchronous and streaming, with a block called
+  per detokenized UTF-8 piece.
+- **Sampling controls** — temperature, top-k, top-p, deterministic
+  seed, and a greedy fallback for `temperature = 0`.
+- **Embeddings** — produced through the same loaded context.
+- **GPU offload** — `nGpuLayers:` is forwarded to llama.cpp; works
+  when `libllama` is built with CUDA, ROCm, Metal, or Vulkan.
+- **Chat API** — a thin wrapper that formats messages and delegates to
+  the inference engine.
 
-- **Model Management**: Load, unload, and manage multiple LLM models
-- **Multiple Format Support**: GGUF, SafeTensors, PyTorch formats
-- **Text Generation**: Synchronous and streaming text completion
-- **Embeddings**: Generate vector embeddings for semantic search and similarity
-- **Chat API**: OpenAI-compatible chat completion interface
-- **Tokenization**: Built-in text tokenization and processing
+## Requirements
 
-### Backend Support
-
-- **Local Backend**: Native Pharo inference engine
-- **Ollama Integration**: Connect to Ollama servers
-- **llama.cpp Integration**: Interface with llama.cpp server instances
-
-### Advanced Features
-
-- **Streaming**: Real-time token-by-token generation
-- **Generation Options**: Temperature, top-p, top-k, max tokens, penalties
-- **GPU Acceleration**: Configurable GPU support (when backend supports it)
-- **Context Management**: Configurable context windows
-- **Multiple Models**: Run multiple models concurrently
+- Pharo 13 or 14 (UFFI support required).
+- A shared build of llama.cpp that exposes the b4000+ API:
+  - Linux: `libllama.so`
+  - macOS: `libllama.dylib`
+  - Windows: `llama.dll`
+- A `.gguf` model file.
 
 ## Installation
 
-### From Iceberg/Git
-
 ```smalltalk
 Metacello new
+  githubUser: 'pharo-llm' project: 'pharo-infer' commitish: 'main' path: 'src';
   baseline: 'AIPharoInfer';
-  repository: 'github://yourusername/PharoInfer:main/src';
   load.
-```
-
-### Manual Installation
-
-1. Clone this repository
-2. Open Pharo
-3. Load the packages via Iceberg or Monticello
-
-## Quick Start
-
-### Basic Text Generation
-
-```smalltalk
-"Create and register a model"
-model := AIModel fromFile: '/path/to/model.gguf' asFileReference.
-model backend: AILocalBackend new.
-manager := AIModelManager default.
-manager registerModel: model.
-"Generate text"
-engine := AIInferenceEngine default.
-result := engine complete: 'Tell me a story about' model: 'your-model-name'.
-```
-
-### Chat Completion
-
-```smalltalk
-"Create a chat request"
-request := AIChatCompletionRequest
-  model: 'your-model-name'
-  messages: {
-    AIChatMessage system: 'You are a helpful AI assistant'.
-    AIChatMessage user: 'What is Smalltalk?' }.
-"Get completion"
-api := AIChatAPI default.
-response := api complete: request.
-"Access the response"
-response message content. "=> 'Smalltalk is...'"
-```
-
-### Streaming Generation
-
-```smalltalk
-"Stream text generation"
-engine := AIInferenceEngine default.
-engine
-  stream: 'Once upon a time'
-  model: 'your-model-name'
-  onToken: [ :token |
-    Transcript show: token; flush ].
-```
-
-### Generate Embeddings
-
-```smalltalk
-"Create embeddings generator"
-generator := AIEmbeddingsGenerator forModel: yourModel.
-"Generate embeddings"
-embedding1 := generator embed: 'The cat sits on the mat'.
-embedding2 := generator embed: 'A feline rests on the rug'.
-"Compute similarity"
-similarity := generator cosineSimilarity: embedding1 with: embedding2.
 ```
 
 ## Configuration
 
-### Setting Up Models Directory
+### Point PharoInfer at your libllama
+
+If the library is not on the system's default search path, pin it
+explicitly:
 
 ```smalltalk
-config := AIInferenceConfig default.
-config modelsDirectory: '/path/to/models' asFileReference.
+AILlamaLibrary libraryPath: '/home/me/llama.cpp/build/libllama.so'.
 ```
 
-### Configuring Generation Options
+### Models directory
 
 ```smalltalk
+AIInferenceConfig default
+    modelsDirectory: '/path/to/models' asFileReference.
+```
+
+## Quick Start
+
+### Basic text generation
+
+```smalltalk
+| manager engine model |
+manager := AIModelManager default.
+manager currentBackend: AILocalBackend new.
+
+model := manager loadModel:
+    (FileLocator home / 'models' / 'tiny.gguf') fullName.
+
+engine := AIInferenceEngine default.
+engine backend: manager currentBackend.
+engine complete: 'Hello from Pharo!' model: model name.
+```
+
+### Streaming
+
+```smalltalk
+engine
+    stream: 'Tell me a joke about Smalltalk'
+    model: model name
+    onToken: [ :piece | Transcript show: piece; flush ].
+```
+
+### Chat completion
+
+```smalltalk
+| request |
+request := AIChatCompletionRequest
+    model: model name
+    messages: {
+        AIChatMessage system: 'You are a helpful AI assistant.'.
+        AIChatMessage user: 'What is Smalltalk?' }.
+AIChatAPI default complete: request.
+```
+
+### Embeddings
+
+```smalltalk
+| generator |
+generator := AIEmbeddingsGenerator forModel: model.
+generator backend: manager currentBackend.
+generator embed: 'The cat sits on the mat'.
+```
+
+### Sampling options
+
+```smalltalk
+| options |
 options := AIGenerationOptions new
-  temperature: 0.7;
-  maxTokens: 500;
-  topP: 0.9;
-  topK: 40;
-  repeatPenalty: 1.1;
-  yourself.
-result := engine complete: 'Your prompt' model: 'model-name' options: options.
+    temperature: 0.7;
+    topP: 0.9;
+    topK: 40;
+    maxTokens: 256;
+    seed: 42;
+    yourself.
+engine complete: 'Once upon a time' model: model name options: options.
 ```
 
-### GPU Configuration
+### GPU offload and threads
 
 ```smalltalk
-config := AIInferenceConfig default.
-config enableGPU: true.
-config gpuLayers: 32.  "Number of layers to offload to GPU"
-```
-
-## Backend Integration
-
-### Using Ollama Backend
-
-```smalltalk
-"Configure Ollama backend"
-ollamaBackend := AIOllamaBackend new.
-ollamaBackend baseUrl: 'http://localhost:11434'.
-"Set as model backend"
-model backend: ollamaBackend.
-"Use as normal"
-result := engine complete: 'Hello' model: 'llama2'.
-```
-
-### Using llama.cpp Backend
-
-```smalltalk
-"Configure llama.cpp backend"
-llamaCppBackend := AILlamaCppBackend new.
-llamaCppBackend serverUrl: 'http://localhost:8080'.
-"Set as model backend"
-model backend: llamaCppBackend.
-"Use as normal"
-result := engine complete: 'Hello' model: 'your-model'.
+AILocalBackend new
+    nGpuLayers: 999;  "offload every layer"
+    nThreads: 8;
+    contextSize: 4096.
 ```
 
 ## Architecture
 
-PharoInfer is built with a clean, extensible architecture:
+- `AILlamaLibrary` — `FFILibrary` mapping the llama.cpp C entry points
+  we call (`llama_backend_init`, `llama_model_load_from_file`,
+  `llama_init_from_model`, `llama_tokenize`, `llama_decode`,
+  `llama_sampler_*`, `llama_token_to_piece`, etc.).
+- `AILlamaModelParams`, `AILlamaContextParams`,
+  `AILlamaSamplerChainParams`, `AILlamaBatch` —
+  `FFIExternalStructure` mirrors of the by-value records used by the
+  C API.
+- `AILocalBackend` — single production backend. Owns the model/context
+  lifecycle, the tokenization path, the sampler chain, and the
+  decode/sample/detokenize loop used for both synchronous and
+  streaming generation.
+- `AILocalModelHandle` — holds the opaque `(model *, context *)` pair
+  returned by llama.cpp and releases them on unload.
+- `AIGGUFParser` — optional GGUF header/metadata reader (pure Pharo).
+  Useful for introspecting a model file without loading it.
+- `AIInferenceEngine`, `AIChatAPI`, `AIChatMessage`,
+  `AIChatCompletionRequest`, `AIChatCompletionResponse` — high-level
+  API.
+- `AIEmbeddingsGenerator` — wraps `generateEmbeddings:` with
+  normalization and cosine-similarity helpers.
+- `AIModel`, `AIModelManager`, `AIModelFormat`,
+  `AIGenerationOptions`, `AIInferenceConfig` — registration, metadata
+  and tuning.
 
-### Core Components
+## Model formats
 
-- **AIModel**: Represents a loaded or loadable LLM model
-- **AIModelManager**: Manages model lifecycle (loading, unloading, discovery)
-- **AIInferenceEngine**: Main inference engine for text generation
-- **AIBackend**: Abstract backend interface for different inference providers
-
-### API Layer
-
-- **AIChatAPI**: OpenAI-compatible chat completion API
-- **AIChatMessage**: Represents chat messages (system, user, assistant)
-- **AIGenerationOptions**: Configuration for text generation
-
-### Tokenization
-
-- **AITokenizer**: Text tokenization and encoding/decoding
-
-### Embeddings
-
-- **AIEmbeddingsGenerator**: Generate and manipulate vector embeddings
-
-### Configuration
-
-- **AIInferenceConfig**: Global configuration for the inference engine
-- **AIModelFormat**: Model format detection and handling
-
-## Model Formats
-
-PharoInfer supports multiple model formats:
-
-### GGUF (GPT-Generated Unified Format)
-
-The recommended format for llama.cpp and Ollama models. Optimized for:
-- Fast loading with memory mapping
-- Various quantization levels (2-bit to 8-bit)
-- Efficient CPU inference
-
-### SafeTensors
-
-A safe, fast serialization format for ML models:
-- Zero-copy loading
-- Safe from arbitrary code execution
-- Wide framework support
-
-### PyTorch
-
-Standard PyTorch model format:
-- `.pt` and `.pth` files
-- Requires PyTorch-compatible backend
+Only GGUF is supported — that is the input format of llama.cpp.
+`AIModelFormat detectFromFile:` recognises the extension and the
+backend refuses anything else.
 
 ## Testing
 
-PharoInfer includes comprehensive test coverage:
-
-### Running Tests
-
-```smalltalk
-"Run all tests"
-AIModelTest suite run.
-AIModelManagerTest suite run.
-AITokenizerTest suite run.
-AIInferenceEngineTest suite run.
-AIChatAPITest suite run.
-AIEmbeddingsGeneratorTest suite run.
-AIIntegrationTest suite run.
-```
-
-### Test Coverage
-
-- **Unit Tests**: Test individual components in isolation
-- **Integration Tests**: Test complete workflows end-to-end
-- **Backend Tests**: Verify backend integrations work correctly
-
-## Examples
-
-### Complete Workflow Example
-
-```smalltalk
-"1. Configure the system"
-config := AIInferenceConfig default.
-config modelsDirectory: '/path/to/models' asFileReference.
-"2. Discover models in directory"
-manager := AIModelManager default.
-discovered := manager discoverModelsInDirectory: config modelsDirectory.
-"3. Load a specific model"
-model := manager loadModel: 'llama-2-7b.gguf'.
-"4. Configure generation options"
-options := AIGenerationOptions new
-  temperature: 0.8;
-  maxTokens: 200;
-  yourself.
-"5. Generate text"
-engine := AIInferenceEngine default.
-result := engine complete: 'Explain quantum computing' model: 'llama-2-7b' options: options.
-"6. Clean up"
-manager unloadModel: 'llama-2-7b'.
-```
-
-### Semantic Search with Embeddings
-
-```smalltalk
-"1. Setup"
-model := manager loadModel: 'embeddings-model'.
-generator := AIEmbeddingsGenerator forModel: model.
-"2. Create document embeddings"
-documents := {
-  'Pharo is a pure object-oriented programming language'.
-  'Python is widely used for data science'.
-  'Smalltalk inspired many modern languages' }.
-embeddings := generator embedBatch: documents.
-"3. Query"
-query := 'Tell me about Pharo'.
-queryEmbedding := generator embed: query.
-"4. Find most similar"
-similarities := embeddings collect: [ :docEmb |
-  generator cosineSimilarity: queryEmbedding with: docEmb ].
-"5. Get best match"
-bestIdx := similarities indexOf: similarities max.
-bestMatch := documents at: bestIdx.
-```
-
-### Multi-Turn Conversation
-
-```smalltalk
-"Setup"
-api := AIChatAPI default.
-conversation := OrderedCollection new.
-"Add system prompt"
-conversation add: (AIChatMessage system: 'You are a Pharo programming expert').
-"First turn"
-conversation add: (AIChatMessage user: 'What is a block in Pharo?').
-request := AIChatCompletionRequest model: 'your-model' messages: conversation asArray.
-response := api complete: request.
-conversation add: response message.
-"Second turn"
-conversation add: (AIChatMessage user: 'Can you show me an example?').
-request := AIChatCompletionRequest model: 'your-model' messages: conversation asArray.
-response := api complete: request.
-conversation add: response message.
-"Access full conversation"
-conversation do: [ :msg |
-  Transcript show: msg role; show: ': '; show: msg content; cr ].
-```
-
-## Performance Considerations
-
-### Memory Management
-
-- Models are loaded on-demand and can be unloaded to free memory
-- Use `AIModelManager unloadAll` to free all loaded models
-- Configure `maxConcurrentInferences` based on available memory
-
-### Quantization
-
-For better performance with limited resources:
-- Use GGUF models with appropriate quantization (4-bit or 8-bit)
-- Lower quantization = less memory, faster inference, slightly lower quality
-
-### Batch Processing
-
-When processing multiple requests:
-- Use embeddings batch processing: `embedBatch:`
-- Configure `batchSize` in `AIInferenceConfig`
-
-## Troubleshooting
-
-### Model Loading Issues
-
-```smalltalk
-"Check if model file exists"
-model path exists. "=> should be true"
-"Check model format"
-model format. "=> should match file extension"
-"Verify backend is set"
-model backend. "=> should not be nil"
-```
-
-### Memory Issues
-
-```smalltalk
-"Unload unused models"
-AIModelManager default unloadAll.
-"Check loaded models"
-AIModelManager default allModels select: #isLoaded.
-"Reduce context size"
-config contextSize: 1024.  "Instead of 2048"
-```
-
-## Contributing
-
-Contributions are welcome! Areas for improvement:
-
-1. Additional model format support
-2. More sophisticated tokenization (BPE, WordPiece)
-3. Model quantization tools
-4. Performance optimizations
-5. Additional backend integrations (vLLM, TensorRT-LLM)
-6. Web interface for model management
+Tests that exercise the FFI path require `libllama` to be available.
+Pure logic tests (models, formats, options, manager, config) run
+against `AIMockBackend` and do not need the native library.
 
 ## License
 
-MIT License
+MIT License.
 
 ## Acknowledgments
 
-Built with inspiration from:
-- [llama.cpp](https://github.com/ggml-org/llama.cpp) - Efficient LLM inference in C/C++
-- [Ollama](https://ollama.ai) - Easy local LLM deployment
-- The Pharo community for their excellent development environment
-
-## References
-
-This inference engine implements features and concepts from modern LLM inference systems:
-
-- [Llama.cpp vs Ollama Comparison](https://www.openxcell.com/blog/llama-cpp-vs-ollama/)
-- [Local LLM Deployment Guide](https://www.oreateai.com/blog/ollama-vs-llamacpp-navigating-the-landscape-of-local-llm-deployment/c041c18ab9d4ad1e1735b470ce07fcf5)
-- [vLLM vs llama.cpp](https://developers.redhat.com/articles/2025/09/30/vllm-or-llamacpp-choosing-right-llm-inference-engine-your-use-case)
-
-## Version
-
-**1.0.0** - Initial release with full inference engine capabilities
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) — the C/C++
+  inference runtime PharoInfer binds to.
+- The Pharo community for UFFI.

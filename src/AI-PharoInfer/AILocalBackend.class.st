@@ -1,327 +1,370 @@
 "
-```
+I am a fully in-image inference backend driven by llama.cpp via UFFI.
+
+I read a GGUF file directly from disk through libllama (no external
+server, no subprocess), then let the Pharo image issue tokenization,
+forward-pass and sampling calls against the loaded model.
+
+```smalltalk
 | manager engine model |
 manager := AIModelManager default.
-
-""Use AILlamaCppBackend instead of AILocalBackend""
-manager currentBackend: AILlamaCppBackend new.
-
-model := manager loadModel: (FileLocator home / 'Desktop' / 'small.gguf') fullName.
-
+manager currentBackend: AILocalBackend new.
+model := manager loadModel: (FileLocator home / 'models' / 'tiny.gguf') fullName.
 engine := AIInferenceEngine default.
 engine backend: manager currentBackend.
-
 engine complete: 'Hello World !' model: model name.
 ```
 
-
-""I am a local inference backend for running models directly inside the image.
-I load model data, configure a tokenizer, and provide simplified implementations of text generation, streaming, and embeddings.""
+libllama location can be overridden globally via
+  AILlamaLibrary libraryPath: '/abs/path/to/libllama.so'.
 "
 Class {
 	#name : 'AILocalBackend',
 	#superclass : 'AIBackend',
 	#instVars : [
+		'library',
 		'loadedModels',
-		'tokenizer'
+		'nThreads',
+		'contextSize',
+		'nGpuLayers',
+		'backendInitialized',
+		'embeddings'
 	],
 	#category : 'AI-PharoInfer',
 	#package : 'AI-PharoInfer'
 }
 
-{ #category : 'private' }
-AILocalBackend >> computeEmbeddings: tokens for: aModel [
+{ #category : 'accessing' }
+AILocalBackend >> contextSize [
 
+	^ contextSize ifNil: [ 2048 ]
+]
 
-	"Compute embeddings for tokens (simplified implementation)"
-	| modelData embedding dimensions |
+{ #category : 'accessing' }
+AILocalBackend >> embeddings [
 
-	modelData := loadedModels at: aModel name.
-	dimensions := 768.
+	^ embeddings ifNil: [ false ]
+]
 
-	"Generate a single embedding vector by averaging token embeddings"
-	"In a real implementation, this would use the model's embedding layer and pooling"
-	embedding := Array new: dimensions.
-	1 to: dimensions do: [ :i |
-		| sum |
-		sum := tokens inject: 0 into: [ :acc :token |
-			acc + (token hash + i) ].
-		embedding at: i put: (sum / (tokens size * 1000.0)) ].
+{ #category : 'accessing' }
+AILocalBackend >> embeddings: aBoolean [
 
-	^ embedding
+	embeddings := aBoolean
+]
+
+{ #category : 'accessing' }
+AILocalBackend >> contextSize: anInteger [
+
+	contextSize := anInteger
 ]
 
 { #category : 'private' }
-AILocalBackend >> computeLogits: tokens model: aModel [
+AILocalBackend >> ensureBackendInitialized [
 
-	"Compute logits for next token prediction (simplified)"
-	| vocabSize logits |
-
-	vocabSize := self tokenizer vocabularySize.
-
-	"Generate random logits (in reality, this would be model output)"
-	logits := Array new: vocabSize.
-	1 to: vocabSize do: [ :i |
-		logits at: i put: (Random new next * 10.0) ].
-
-	^ logits
+	backendInitialized ifTrue: [ ^ self ].
+	self library llamaBackendInit.
+	backendInitialized := true
 ]
 
 { #category : 'private' }
 AILocalBackend >> ensureModelLoaded: aModel [
 
-	"Ensure the model is loaded"
 	(loadedModels includesKey: aModel name) ifFalse: [
 		Error signal: 'Model not loaded: ', aModel name ]
 ]
 
-{ #category : 'private' }
+{ #category : 'operations' }
 AILocalBackend >> generateEmbeddings: text model: aModel [
-	"Generate embeddings for the given text using local inference"
-	| tokens embedding |
+	"Compute a pooled embedding vector for text using the loaded context.
+	 The context must have been created with embeddings=true. Build the
+	 backend with #embeddings: true before calling #loadModel: if you
+	 intend to use this method."
 
+	| handle vocabPtr tokens embPtr embd dim |
 	self ensureModelLoaded: aModel.
+	handle := loadedModels at: aModel name.
+	vocabPtr := self library llamaModelGetVocab: handle modelPtr.
 
-	"Tokenize the text"
-	tokens := self tokenizer tokenize: text.
+	tokens := self
+		tokenizeString: text
+		vocab: vocabPtr
+		addSpecial: true.
 
-	"Generate embeddings (simplified implementation)"
-	embedding := self computeEmbeddings: tokens for: aModel.
+	self decodeTokens: tokens context: handle ctxPtr.
 
-	^ embedding
+	dim := self library llamaModelNEmbd: handle modelPtr.
+	embPtr := self library llamaGetEmbeddings: handle ctxPtr.
+	embPtr isNull ifTrue: [
+		Error signal:
+			'llama_get_embeddings returned NULL; create the backend with #embeddings: true to enable pooled embeddings.' ].
+
+	embd := Array new: dim.
+	1 to: dim do: [ :i |
+		embd at: i put: (embPtr float32AtOffset: (i - 1) * 4) ].
+	^ embd
 ]
 
-{ #category : 'private' }
+{ #category : 'operations' }
 AILocalBackend >> generateText: prompt model: aModel options: options [
-	"Generate text from a prompt using local inference"
-	| tokens result |
 
-	self ensureModelLoaded: aModel.
-
-	"Tokenize the prompt"
-	tokens := self tokenizer tokenize: prompt.
-
-	"Generate tokens"
-	result := self performInference: tokens model: aModel options: options.
-
-	^ result
+	| out |
+	out := WriteStream on: String new.
+	self
+		streamText: prompt
+		model: aModel
+		options: options
+		onToken: [ :piece | out nextPutAll: piece ].
+	^ out contents
 ]
 
-{ #category : 'private' }
+{ #category : 'initialization' }
 AILocalBackend >> initialize [
 
 	super initialize.
 	loadedModels := Dictionary new.
-	tokenizer := AITokenizer new
+	backendInitialized := false.
+	embeddings := false
 ]
 
 { #category : 'private' }
-AILocalBackend >> isEndToken: token [
+AILocalBackend >> library [
 
-	"Check if token is an end-of-sequence token"
-	^ token = self tokenizer eosToken
+	^ library ifNil: [ library := AILlamaLibrary uniqueInstance ]
 ]
 
-{ #category : 'private' }
+{ #category : 'operations' }
 AILocalBackend >> loadModel: aModel [
 
-	"Load a model into memory"
-	| modelData |
-
+	| modelParams ctxParams modelPtr ctxPtr handle path |
 	(loadedModels includesKey: aModel name) ifTrue: [ ^ self ].
 
-	"Load model data from file"
-	modelData := self loadModelData: aModel.
-
-	loadedModels at: aModel name put: modelData
-]
-
-{ #category : 'private' }
-AILocalBackend >> loadModelData: aModel [
-
-	"Load model data from file (simplified implementation)"
-	| data parser tokenizerData vocab |
-
+	aModel path ifNil: [ Error signal: 'Model has no path: ', aModel name ].
 	aModel path exists ifFalse: [
 		Error signal: 'Model file not found: ', aModel path fullName ].
-	
-	
-	"Parse GGUF file if format is GGUF"
-(aModel format notNil and: [ aModel format extension asLowercase = 'gguf' ]) ifTrue: [
-		parser := AIGGUFParser parseFile: aModel path.
-		tokenizerData := parser tokenizerData.
 
-		"Build vocabulary from tokens array"
-		vocab := Dictionary new.
-		(tokenizerData at: 'tokens' ifAbsent: [ #() ]) withIndexDo: [ :token :index |
-			"GGUF uses 0-based indexing"
-			vocab at: token put: (index - 1) ].
+	self ensureBackendInitialized.
 
-		"Create new tokenizer with loaded vocabulary"
-		tokenizer := AITokenizer new.
-		tokenizer vocabulary: vocab.
+	path := aModel path fullName.
 
-		"Set special tokens if available"
-		(tokenizerData at: 'bos_token_id' ifAbsent: [ nil ]) ifNotNil: [ :id |
-			tokenizer bosToken: id ].
-		(tokenizerData at: 'eos_token_id' ifAbsent: [ nil ]) ifNotNil: [ :id |
-			tokenizer eosToken: id ].
-		(tokenizerData at: 'pad_token_id' ifAbsent: [ nil ]) ifNotNil: [ :id |
-			tokenizer padToken: id ].
-		(tokenizerData at: 'unk_token_id' ifAbsent: [ nil ]) ifNotNil: [ :id |
-			tokenizer unkToken: id ].
+	modelParams := self library llamaModelDefaultParams.
+	modelParams nGpuLayers: self nGpuLayers.
 
-		"Store model data"
-		data := Dictionary new.
-		data at: 'path' put: aModel path.
-		data at: 'format' put: aModel format.
-		data at: 'loaded_at' put: DateAndTime now.
-		data at: 'vocabulary' put: vocab.
-		data at: 'metadata' put: parser metadata.
+	modelPtr := self library
+		llamaModelLoadFromFile: path
+		params: modelParams.
+	modelPtr isNull ifTrue: [
+		Error signal: 'llama_model_load_from_file failed for: ', path ].
 
-		^ data ].
-	
-	
+	ctxParams := self library llamaContextDefaultParams.
+	ctxParams
+		nCtx: self contextSize;
+		nBatch: 512;
+		nThreads: self nThreads;
+		nThreadsBatch: self nThreads;
+		embeddings: self embeddings.
 
-	"In a real implementation, this would parse GGUF/safetensors format"
-	data := Dictionary new.
-	data at: 'path' put: aModel path.
-	data at: 'format' put: aModel format.
-	data at: 'loaded_at' put: DateAndTime now.
+	ctxPtr := self library
+		llamaInitFromModel: modelPtr
+		params: ctxParams.
+	ctxPtr isNull ifTrue: [
+		self library llamaModelFree: modelPtr.
+		Error signal: 'llama_init_from_model failed for: ', path ].
 
-	^ data
+	handle := AILocalModelHandle new
+		modelPtr: modelPtr;
+		ctxPtr: ctxPtr;
+		path: path;
+		yourself.
+
+	loadedModels at: aModel name put: handle
+]
+
+{ #category : 'accessing' }
+AILocalBackend >> nGpuLayers [
+
+	^ nGpuLayers ifNil: [ 0 ]
+]
+
+{ #category : 'accessing' }
+AILocalBackend >> nGpuLayers: anInteger [
+
+	nGpuLayers := anInteger
+]
+
+{ #category : 'accessing' }
+AILocalBackend >> nThreads [
+
+	^ nThreads ifNil: [ Smalltalk vm parameterAt: 58 ifAbsent: [ 4 ] ]
+]
+
+{ #category : 'accessing' }
+AILocalBackend >> nThreads: anInteger [
+
+	nThreads := anInteger
 ]
 
 { #category : 'private' }
-AILocalBackend >> performInference: tokens model: aModel options: options [
-    | modelData generated result currentTokens |
+AILocalBackend >> buildSampler: options [
 
-    modelData := loadedModels at: aModel name.
-    generated := OrderedCollection new.
+	| lib chainParams chain seed |
+	lib := self library.
+	chainParams := lib llamaSamplerChainDefaultParams.
+	chain := lib llamaSamplerChainInit: chainParams.
 
-    currentTokens := tokens.  "copy argument into temp"
+	options topK > 0 ifTrue: [
+		lib
+			llamaSamplerChainAdd: chain
+			sampler: (lib llamaSamplerInitTopK: options topK) ].
 
-    options maxTokens timesRepeat: [
-        | nextToken |
-        nextToken := self
-            predictNextToken: currentTokens
-            model: aModel
-            options: options.
+	options topP < 1.0 ifTrue: [
+		lib
+			llamaSamplerChainAdd: chain
+			sampler: (lib llamaSamplerInitTopP: options topP minKeep: 1) ].
 
-        (self isEndToken: nextToken)
-            ifTrue: [ ^ self tokenizer decode: generated ].
+	options temperature > 0.0
+		ifTrue: [
+			lib
+				llamaSamplerChainAdd: chain
+				sampler: (lib llamaSamplerInitTemp: options temperature).
+			seed := options seed ifNil: [ 16rFFFFFFFF ].
+			lib
+				llamaSamplerChainAdd: chain
+				sampler: (lib llamaSamplerInitDist: seed) ]
+		ifFalse: [
+			lib
+				llamaSamplerChainAdd: chain
+				sampler: lib llamaSamplerInitGreedy ].
 
-        generated add: nextToken.
-        currentTokens := currentTokens copyWith: nextToken
-    ].
-
-    result := self tokenizer decode: generated.
-    ^ result
-
+	^ chain
 ]
 
 { #category : 'private' }
-AILocalBackend >> predictNextToken: tokens model: aModel options: options [
+AILocalBackend >> decodeTokens: tokenArray context: ctxPtr [
 
-	"Predict next token (simplified implementation using sampling)"
-	| logits sampledToken |
-
-	"In a real implementation, this would:
-	1. Run the model's forward pass
-	2. Apply temperature scaling
-	3. Apply top-p/top-k sampling
-	4. Return the sampled token"
-
-	"For now, return a dummy token based on context"
-	logits := self computeLogits: tokens model: aModel.
-
-	sampledToken := self sampleToken: logits options: options.
-
-	^ sampledToken
+	| lib buffer batch rc |
+	lib := self library.
+	buffer := FFIExternalArray
+		externalNewType: 'int32'
+		size: tokenArray size.
+	[
+		1 to: tokenArray size do: [ :i |
+			buffer at: i put: (tokenArray at: i) ].
+		batch := lib
+			llamaBatchGetOne: buffer getHandle
+			nTokens: tokenArray size.
+		rc := lib llamaDecode: ctxPtr batch: batch.
+		rc ~= 0 ifTrue: [
+			Error signal: 'llama_decode failed with code ', rc asString ] ]
+		ensure: [ buffer free ]
 ]
 
 { #category : 'private' }
-AILocalBackend >> sampleFromDistribution: probs [
+AILocalBackend >> detokenize: tokenId vocab: vocabPtr [
 
-	"Sample an index from a probability distribution"
-	| rand cumulative |
-
-	rand := Random new next.
-	cumulative := 0.0.
-
-	probs withIndexDo: [ :prob :idx |
-		cumulative := cumulative + prob.
-		rand <= cumulative ifTrue: [ ^ idx ] ].
-
-	^ probs size
+	| lib buf written result |
+	lib := self library.
+	buf := ByteArray new: 64.
+	written := lib
+		llamaTokenToPiece: vocabPtr
+		token: tokenId
+		buf: buf
+		length: buf size
+		lstrip: 0
+		special: false.
+	written < 0 ifTrue: [
+		buf := ByteArray new: written negated.
+		written := lib
+			llamaTokenToPiece: vocabPtr
+			token: tokenId
+			buf: buf
+			length: buf size
+			lstrip: 0
+			special: false ].
+	written <= 0 ifTrue: [ ^ '' ].
+	result := buf copyFrom: 1 to: written.
+	^ [ result utf8Decoded ]
+		on: Error
+		do: [ :e | result asString ]
 ]
 
 { #category : 'private' }
-AILocalBackend >> sampleToken: logits options: options [
+AILocalBackend >> tokenizeString: aString vocab: vocabPtr addSpecial: addSpecial [
 
-	"Sample a token from logits using temperature and top-p"
-	| temperature probs sampledIdx sum |
-
-	temperature := options temperature.
-
-	"Apply temperature scaling"
-	probs := logits collect: [ :logit | (logit / temperature) exp ].
-
-	"Normalize probabilities"
-	sum := probs inject: 0 into: [ :acc :p | acc + p ].
-	probs := probs collect: [ :p | p / sum ].
-
-	"Sample from distribution (simplified - should implement top-p/top-k)"
-	sampledIdx := self sampleFromDistribution: probs.
-
-	"Convert 1-based array index to 0-based token ID (GGUF convention)"
-	^ sampledIdx - 1
+	| lib bytes initialCap buffer written needed tokens |
+	lib := self library.
+	bytes := aString utf8Encoded.
+	initialCap := bytes size + 16 max: 32.
+	buffer := FFIExternalArray
+		externalNewType: 'int32'
+		size: initialCap.
+	[
+		written := lib
+			llamaTokenize: vocabPtr
+			text: aString
+			textLen: bytes size
+			tokens: buffer getHandle
+			nTokensMax: initialCap
+			addSpecial: addSpecial
+			parseSpecial: true.
+		written < 0 ifTrue: [
+			needed := written negated.
+			buffer free.
+			buffer := FFIExternalArray
+				externalNewType: 'int32'
+				size: needed.
+			written := lib
+				llamaTokenize: vocabPtr
+				text: aString
+				textLen: bytes size
+				tokens: buffer getHandle
+				nTokensMax: needed
+				addSpecial: addSpecial
+				parseSpecial: true ].
+		tokens := Array new: written.
+		1 to: written do: [ :i | tokens at: i put: (buffer at: i) ] ]
+		ensure: [ buffer free ].
+	^ tokens
 ]
 
-{ #category : 'private' }
+{ #category : 'operations' }
 AILocalBackend >> streamText: prompt model: aModel options: options onToken: aBlock [
 
-	"Stream text generation, calling aBlock for each token"
-	| tokens generatedTokens |
-
+	| handle vocabPtr lib tokens sampler generated maxTokens nextToken piece |
 	self ensureModelLoaded: aModel.
+	handle := loadedModels at: aModel name.
+	lib := self library.
 
-	"Tokenize the prompt"
-	tokens := self tokenizer tokenize: prompt.
+	vocabPtr := lib llamaModelGetVocab: handle modelPtr.
+	tokens := self tokenizeString: prompt vocab: vocabPtr addSpecial: true.
+	self decodeTokens: tokens context: handle ctxPtr.
 
-	"Generate tokens one by one"
-	generatedTokens := 0.
-	[ generatedTokens < options maxTokens ] whileTrue: [
-		| nextToken |
-		nextToken := self predictNextToken: tokens model: aModel options: options.
+	sampler := self buildSampler: options.
+	maxTokens := options maxTokens.
+	generated := 0.
 
-		"Check for end of sequence"
-		(self isEndToken: nextToken) ifTrue: [ ^ self ].
+	[
+		[ generated < maxTokens ] whileTrue: [
+			nextToken := lib
+				llamaSamplerSample: sampler
+				context: handle ctxPtr
+				idx: -1.
+			(lib llamaVocabIsEog: vocabPtr token: nextToken) ifTrue: [ ^ self ].
 
-		"Add token to context"
-		tokens := tokens copyWith: nextToken.
+			lib llamaSamplerAccept: sampler token: nextToken.
+			piece := self detokenize: nextToken vocab: vocabPtr.
+			piece ifNotEmpty: [ aBlock value: piece ].
 
-		"Decode and send to block"
-		aBlock value: (self tokenizer decode: nextToken).
-
-		generatedTokens := generatedTokens + 1 ]
+			self
+				decodeTokens: (Array with: nextToken)
+				context: handle ctxPtr.
+			generated := generated + 1 ] ]
+		ensure: [ lib llamaSamplerFree: sampler ]
 ]
 
-{ #category : 'private' }
-AILocalBackend >> tokenizer [
-
-	^ tokenizer
-]
-
-{ #category : 'private' }
-AILocalBackend >> tokenizer: anObject [
-
-	tokenizer := anObject
-]
-
-{ #category : 'private' }
+{ #category : 'operations' }
 AILocalBackend >> unloadModel: aModel [
 
-	"Unload a model from memory"
-	loadedModels removeKey: aModel name ifAbsent: [ ]
+	| handle |
+	handle := loadedModels removeKey: aModel name ifAbsent: [ ^ self ].
+	handle freeWith: self library
 ]
