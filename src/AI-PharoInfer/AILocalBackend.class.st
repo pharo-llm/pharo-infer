@@ -304,21 +304,16 @@ AILocalBackend >> streamText: prompt model: aModel options: options onToken: aBl
 
 	[
 		[ generated < maxTokens ] whileTrue: [
-			nextToken := lib
-				llamaSamplerSample: sampler
-				context: handle ctxPtr
-				idx: -1.
-			(lib llamaVocabIsEog: vocabPtr token: nextToken) ifTrue: [ ^ self ].
+				nextToken := lib llamaSamplerSample: sampler context: handle ctxPtr idx: -1.
+				(lib llamaVocabIsEog: vocabPtr token: nextToken) ifTrue: [ ^ self ].
 
-			lib llamaSamplerAccept: sampler token: nextToken.
-			piece := self detokenize: nextToken vocab: vocabPtr.
-			piece ifNotEmpty: [ aBlock value: piece ].
+				"llama_sampler_sample already accepts the chosen token; do not
+			 double-accept or stateful samplers (penalties, mirostat) drift."
+				piece := self detokenize: nextToken vocab: vocabPtr.
+				piece ifNotEmpty: [ aBlock value: piece ].
 
-			self
-				decodeTokens: (Array with: nextToken)
-				context: handle ctxPtr.
-			generated := generated + 1 ] ]
-		ensure: [ lib llamaSamplerFree: sampler ]
+				self decodeTokens: (Array with: nextToken) context: handle ctxPtr.
+				generated := generated + 1 ] ] ensure: [ lib llamaSamplerFree: sampler ]
 ]
 
 { #category : 'private' }

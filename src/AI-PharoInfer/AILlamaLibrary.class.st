@@ -80,11 +80,16 @@ AILlamaLibrary >> llamaContextDefaultParamsInto: aPointer [
 
 { #category : 'batch' }
 AILlamaLibrary >> llamaDecode: ctxPtr batch: aBatch [
-	"Run the forward pass for the given batch. Returns 0 on success."
+	"Run the forward pass for the given batch. Returns 0 on success.
+	 Called on the FFI worker thread so the Pharo UI stays responsive
+	 while the native decode (which can take hundreds of ms per token
+	 on CPU) runs."
 
-	^ self ffiCall: #( int32 llama_decode (
-		void * ctxPtr,
-		AILlamaBatch aBatch ) )
+	^ self
+		ffiCall: #( int32 llama_decode (
+			void * ctxPtr,
+			AILlamaBatch aBatch ) )
+		options: #( optThreaded )
 ]
 
 { #category : 'context' }
@@ -111,11 +116,14 @@ AILlamaLibrary >> llamaGetLogits: ctxPtr [
 
 { #category : 'context' }
 AILlamaLibrary >> llamaInitFromModel: modelPtr params: paramsStruct [
-	"Create a new llama_context * from a model and context params."
+	"Create a new llama_context * from a model and context params.
+	 Context creation allocates KV-cache buffers and can take seconds."
 
-	^ self ffiCall: #( void * llama_init_from_model (
-		void * modelPtr,
-		AILlamaContextParams paramsStruct ) )
+	^ self
+		ffiCall: #( void * llama_init_from_model (
+			void * modelPtr,
+			AILlamaContextParams paramsStruct ) )
+		options: #( optThreaded )
 ]
 
 { #category : 'context' }
@@ -152,14 +160,18 @@ AILlamaLibrary >> llamaModelGetVocab: modelPtr [
 	^ self ffiCall: #( void * llama_model_get_vocab ( void * modelPtr ) )
 ]
 
-{ #category : 'model' }
+{ #category : 'context' }
 AILlamaLibrary >> llamaModelLoadFromFile: pathString params: paramsStruct [
 	"Load a model file and return an opaque llama_model * pointer.
-	 paramsStruct must be an AILlamaModelParams instance."
+	 paramsStruct must be an AILlamaModelParams instance.
+	 mmap'ing weights and building the model graph can take many seconds
+	 for a multi-GB GGUF, so we run it on the FFI worker thread."
 
-	^ self ffiCall: #( void * llama_model_load_from_file (
-		String pathString,
-		AILlamaModelParams paramsStruct ) )
+	^ self
+		ffiCall: #( void * llama_model_load_from_file (
+			String pathString,
+			AILlamaModelParams paramsStruct ) )
+		options: #( optThreaded )
 ]
 
 { #category : 'model' }
@@ -254,13 +266,18 @@ AILlamaLibrary >> llamaSamplerInitTopP: p minKeep: minKeep [
 		uint64 minKeep ) )
 ]
 
-{ #category : 'sampling' }
+{ #category : 'context' }
 AILlamaLibrary >> llamaSamplerSample: samplerPtr context: ctxPtr idx: idx [
+	"Pulls logits from ctxPtr and walks the sampler chain. For large
+	 vocabularies (128k+ tokens) this is slow enough to stutter the UI,
+	 so we run it on the FFI worker thread."
 
-	^ self ffiCall: #( int32 llama_sampler_sample (
-		void * samplerPtr,
-		void * ctxPtr,
-		int32 idx ) )
+	^ self
+		ffiCall: #( int32 llama_sampler_sample (
+			void * samplerPtr,
+			void * ctxPtr,
+			int32 idx ) )
+		options: #( optThreaded )
 ]
 
 { #category : 'tokenization' }
