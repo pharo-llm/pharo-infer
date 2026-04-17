@@ -104,7 +104,11 @@ AILlamaModelParams >> nGpuLayers [
 
 { #category : 'accessing' }
 AILlamaModelParams >> nGpuLayers: anInteger [
-	self int32AtOffset: OFFSET_N_GPU_LAYERS put: anInteger
+
+	
+self getHandle uint8AtOffset: OFFSET_N_GPU_LAYERS put: (anInteger
+		ifTrue: [ 1 ]
+		ifFalse: [ 0 ])
 ]
 
 { #category : 'accessing - structure variables' }

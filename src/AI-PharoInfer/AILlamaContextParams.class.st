@@ -159,8 +159,9 @@ AILlamaContextParams >> embeddings [
 
 { #category : 'accessing - structure variables' }
 AILlamaContextParams >> embeddings: anObject [
-	"This method was automatically generated"
-	handle unsignedByteAt: OFFSET_EMBEDDINGS put: anObject
+	self getHandle uint8AtOffset: OFFSET_EMBEDDINGS put: (anObject
+		ifTrue: [ 1 ]
+		ifFalse: [ 0 ])
 ]
 
 { #category : 'accessing - structure variables' }
@@ -214,7 +215,13 @@ AILlamaContextParams >> nThreads [
 
 { #category : 'accessing' }
 AILlamaContextParams >> nThreads: anInteger [
-	self int32AtOffset: OFFSET_N_THREADS put: anInteger
+	
+	
+		self getHandle uint8AtOffset: OFFSET_N_THREADS put: (anInteger
+		ifTrue: [ 1 ]
+		ifFalse: [ 0 ])
+
+
 ]
 
 { #category : 'accessing' }
@@ -224,7 +231,10 @@ AILlamaContextParams >> nThreadsBatch [
 
 { #category : 'accessing' }
 AILlamaContextParams >> nThreadsBatch: anInteger [
-	self int32AtOffset: OFFSET_N_THREADS_BATCH put: anInteger
+
+	self getHandle uint8AtOffset: OFFSET_N_THREADS_BATCH put: (anInteger
+		ifTrue: [ 1 ]
+		ifFalse: [ 0 ])
 ]
 
 { #category : 'accessing - structure variables' }

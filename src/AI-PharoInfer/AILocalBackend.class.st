@@ -244,8 +244,7 @@ ctxParams
 	n_ctx: self contextSize;
 	n_batch: 512;
 	n_threads: self nThreads;
-	n_threads_batch: self nThreads;
-	embeddings: self embeddings.
+	n_threads_batch: self nThreads.
 
 	ctxPtr := self library
 		llamaInitFromModel: modelPtr
@@ -278,7 +277,7 @@ AILocalBackend >> nGpuLayers: anInteger [
 { #category : 'accessing' }
 AILocalBackend >> nThreads [
 
-	^ nThreads ifNil: [ Smalltalk vm parameterAt: 58 ifAbsent: [ 4 ] ]
+	^ nThreads ifNil: [ 4 ]
 ]
 
 { #category : 'accessing' }
