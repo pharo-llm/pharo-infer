@@ -217,11 +217,7 @@ AILlamaContextParams >> nThreads [
 AILlamaContextParams >> nThreads: anInteger [
 	
 	
-		self getHandle uint8AtOffset: OFFSET_N_THREADS put: (anInteger
-		ifTrue: [ 1 ]
-		ifFalse: [ 0 ])
-
-
+		self int32AtOffset: OFFSET_N_THREADS put: anInteger
 ]
 
 { #category : 'accessing' }
@@ -232,9 +228,7 @@ AILlamaContextParams >> nThreadsBatch [
 { #category : 'accessing' }
 AILlamaContextParams >> nThreadsBatch: anInteger [
 
-	self getHandle uint8AtOffset: OFFSET_N_THREADS_BATCH put: (anInteger
-		ifTrue: [ 1 ]
-		ifFalse: [ 0 ])
+self int32AtOffset: OFFSET_N_THREADS_BATCH put: anInteger
 ]
 
 { #category : 'accessing - structure variables' }

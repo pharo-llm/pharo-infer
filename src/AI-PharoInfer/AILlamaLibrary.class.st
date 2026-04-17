@@ -66,10 +66,10 @@ AILlamaLibrary >> llamaBatchGetOne: tokensBuffer nTokens: nTokens [
 { #category : 'model' }
 AILlamaLibrary >> llamaContextDefaultParams [
 
-	| params |
-	params := AILlamaContextParams new.
-	self llamaContextDefaultParamsInto: params getHandle.
-	^ params
+"Return a fresh AILlamaContextParams filled with llama.cpp defaults
+	 (by-value return)."
+
+	^ self ffiCall: #( AILlamaContextParams llama_context_default_params ( void ) )
 ]
 
 { #category : 'model' }
@@ -127,11 +127,10 @@ AILlamaLibrary >> llamaKvSelfClear: ctxPtr [
 
 { #category : 'model' }
 AILlamaLibrary >> llamaModelDefaultParams [
+"Return a fresh AILlamaModelParams filled with llama.cpp defaults
+	 (by-value return)."
 
-	| params |
-	params := AILlamaModelParams new.
-	self llamaModelDefaultParamsInto: params getHandle.
-	^ params
+	^ self ffiCall: #( AILlamaModelParams llama_model_default_params ( void ) )
 ]
 
 { #category : 'context' }
@@ -201,10 +200,7 @@ AILlamaLibrary >> llamaSamplerChainAdd: chainPtr sampler: samplerPtr [
 { #category : 'model' }
 AILlamaLibrary >> llamaSamplerChainDefaultParams [
 
-	| params |
-	params := AILlamaSamplerChainParams new.
-	self llamaSamplerChainDefaultParamsInto: params getHandle.
-	^ params
+^ self ffiCall: #( AILlamaSamplerChainParams llama_sampler_chain_default_params ( void ) )
 ]
 
 { #category : 'model' }
