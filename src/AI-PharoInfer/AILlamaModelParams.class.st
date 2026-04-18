@@ -97,15 +97,17 @@ AILlamaModelParams >> main_gpu: anObject [
 	handle signedLongAt: OFFSET_MAIN_GPU put: anObject
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaModelParams >> nGpuLayers [
-	^ self int32AtOffset: OFFSET_N_GPU_LAYERS
+
+	^ handle signedLongAt: OFFSET_N_GPU_LAYERS
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaModelParams >> nGpuLayers: anInteger [
 
-self int32AtOffset: OFFSET_N_GPU_LAYERS put: anInteger
+
+	handle signedLongAt: OFFSET_N_GPU_LAYERS put: anInteger
 ]
 
 { #category : 'accessing - structure variables' }
@@ -180,24 +182,28 @@ AILlamaModelParams >> tensor_split: anObject [
 	handle pointerAt: OFFSET_TENSOR_SPLIT put: anObject getHandle.
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaModelParams >> useMlock [
-	^ (self uint8AtOffset: OFFSET_USE_MLOCK) ~= 0
+
+	^ (handle unsignedByteAt: OFFSET_USE_MLOCK) ~= 0
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaModelParams >> useMlock: aBoolean [
-	self uint8AtOffset: OFFSET_USE_MLOCK put: (aBoolean ifTrue: [ 1 ] ifFalse: [ 0 ])
+
+	handle unsignedByteAt: OFFSET_USE_MLOCK put: (aBoolean ifTrue: [ 1 ] ifFalse: [ 0 ])
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaModelParams >> useMmap [
-	^ (self uint8AtOffset: OFFSET_USE_MMAP) ~= 0
+
+	^ (handle unsignedByteAt: OFFSET_USE_MMAP) ~= 0
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaModelParams >> useMmap: aBoolean [
-	self uint8AtOffset: OFFSET_USE_MMAP put: (aBoolean ifTrue: [ 1 ] ifFalse: [ 0 ])
+
+	handle unsignedByteAt: OFFSET_USE_MMAP put: (aBoolean ifTrue: [ 1 ] ifFalse: [ 0 ])
 ]
 
 { #category : 'accessing - structure variables' }
@@ -224,14 +230,16 @@ AILlamaModelParams >> use_mmap: anObject [
 	handle unsignedByteAt: OFFSET_USE_MMAP put: anObject
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaModelParams >> vocabOnly [
-	^ (self uint8AtOffset: OFFSET_VOCAB_ONLY) ~= 0
+
+	^ (handle unsignedByteAt: OFFSET_VOCAB_ONLY) ~= 0
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaModelParams >> vocabOnly: aBoolean [
-	self uint8AtOffset: OFFSET_VOCAB_ONLY put: (aBoolean ifTrue: [ 1 ] ifFalse: [ 0 ])
+
+	handle unsignedByteAt: OFFSET_VOCAB_ONLY put: (aBoolean ifTrue: [ 1 ] ifFalse: [ 0 ])
 ]
 
 { #category : 'accessing - structure variables' }
