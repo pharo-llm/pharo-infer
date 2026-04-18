@@ -155,13 +155,13 @@ AILlamaContextParams >> defrag_thold: anObject [
 AILlamaContextParams >> embeddings [
 	"This method was automatically generated"
 
-	^ (self uint8AtOffset: OFFSET_EMBEDDINGS) ~= 0
+	^ (handle unsignedByteAt: OFFSET_EMBEDDINGS) ~= 0
 ]
 
 { #category : 'accessing - structure variables' }
 AILlamaContextParams >> embeddings: aBoolean [
 
-	self uint8AtOffset: OFFSET_EMBEDDINGS put: (aBoolean
+	handle unsignedByteAt: OFFSET_EMBEDDINGS put: (aBoolean
 			 ifTrue: [ 1 ]
 			 ifFalse: [ 0 ])
 ]
@@ -190,47 +190,52 @@ AILlamaContextParams >> logits_all: anObject [
 	handle unsignedByteAt: OFFSET_LOGITS_ALL put: anObject
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaContextParams >> nBatch [
-	^ self uint32AtOffset: OFFSET_N_BATCH
+
+	^ handle unsignedLongAt: OFFSET_N_BATCH
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaContextParams >> nBatch: anInteger [
-	self uint32AtOffset: OFFSET_N_BATCH put: anInteger
+
+	handle unsignedLongAt: OFFSET_N_BATCH put: anInteger
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaContextParams >> nCtx [
-	^ self uint32AtOffset: OFFSET_N_CTX
+
+	^ handle unsignedLongAt: OFFSET_N_CTX
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaContextParams >> nCtx: anInteger [
-	self uint32AtOffset: OFFSET_N_CTX put: anInteger
+
+	handle unsignedLongAt: OFFSET_N_CTX put: anInteger
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaContextParams >> nThreads [
-	^ self int32AtOffset: OFFSET_N_THREADS
+
+	^ handle signedLongAt: OFFSET_N_THREADS
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaContextParams >> nThreads: anInteger [
-	
-	
-		self int32AtOffset: OFFSET_N_THREADS put: anInteger
+
+	handle signedLongAt: OFFSET_N_THREADS put: anInteger
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaContextParams >> nThreadsBatch [
-	^ self int32AtOffset: OFFSET_N_THREADS_BATCH
+	^ handle signedLongAt: OFFSET_N_THREADS_BATCH
 ]
 
-{ #category : 'accessing' }
+{ #category : 'accessing - structure variables' }
 AILlamaContextParams >> nThreadsBatch: anInteger [
 
-self int32AtOffset: OFFSET_N_THREADS_BATCH put: anInteger
+
+	handle signedLongAt: OFFSET_N_THREADS_BATCH put: anInteger
 ]
 
 { #category : 'accessing - structure variables' }
