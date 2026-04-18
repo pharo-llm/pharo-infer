@@ -169,22 +169,19 @@ AILocalBackend >> generateEmbeddings: text model: aModel [
 	handle := loadedModels at: aModel name.
 	vocabPtr := self library llamaModelGetVocab: handle modelPtr.
 
-	tokens := self
-		tokenizeString: text
-		vocab: vocabPtr
-		addSpecial: true.
+	tokens := self tokenizeString: text vocab: vocabPtr addSpecial: true.
+	
+	self library llamaKvSelfClear: handle ctxPtr.
 
 	self decodeTokens: tokens context: handle ctxPtr.
 
 	dim := self library llamaModelNEmbd: handle modelPtr.
 	embPtr := self library llamaGetEmbeddings: handle ctxPtr.
 	embPtr isNull ifTrue: [
-		Error signal:
-			'llama_get_embeddings returned NULL; create the backend with #embeddings: true to enable pooled embeddings.' ].
+		Error signal: 'llama_get_embeddings returned NULL; create the backend with #embeddings: true to enable pooled embeddings.' ].
 
 	embd := Array new: dim.
-	1 to: dim do: [ :i |
-		embd at: i put: (embPtr float32AtOffset: (i - 1) * 4) ].
+	1 to: dim do: [ :i | embd at: i put: (embPtr float32AtOffset: i - 1 * 4) ].
 	^ embd
 ]
 
@@ -222,42 +219,31 @@ AILocalBackend >> loadModel: aModel [
 	| modelParams ctxParams modelPtr ctxPtr handle path |
 	(loadedModels includesKey: aModel name) ifTrue: [ ^ self ].
 
-	aModel path ifNil: [ Error signal: 'Model has no path: ', aModel name ].
-	aModel path exists ifFalse: [
-		Error signal: 'Model file not found: ', aModel path fullName ].
+	aModel path ifNil: [ Error signal: 'Model has no path: ' , aModel name ].
+	aModel path exists ifFalse: [ Error signal: 'Model file not found: ' , aModel path fullName ].
 
 	self ensureBackendInitialized.
 
 	path := aModel path fullName.
 
 	modelParams := self library llamaModelDefaultParams.
-	modelParams n_gpu_layers: self nGpuLayers.
+	modelParams nGpuLayers: self nGpuLayers.
 
-	modelPtr := self library
-		llamaModelLoadFromFile: path
-		params: modelParams.
-	modelPtr isNull ifTrue: [
-		Error signal: 'llama_model_load_from_file failed for: ', path ].
+	modelPtr := self library llamaModelLoadFromFile: path params: modelParams.
+	modelPtr isNull ifTrue: [ Error signal: 'llama_model_load_from_file failed for: ' , path ].
 
 	ctxParams := self library llamaContextDefaultParams.
-ctxParams
-	n_ctx: self contextSize;
-	n_batch: 512;
-	n_threads: self nThreads;
-	n_threads_batch: self nThreads.
-
-	ctxPtr := self library
-		llamaInitFromModel: modelPtr
-		params: ctxParams.
+	
+	ctxPtr := self library llamaInitFromModel: modelPtr params: ctxParams.
 	ctxPtr isNull ifTrue: [
-		self library llamaModelFree: modelPtr.
-		Error signal: 'llama_init_from_model failed for: ', path ].
+			self library llamaModelFree: modelPtr.
+			Error signal: 'llama_init_from_model failed for: ' , path ].
 
 	handle := AILocalModelHandle new
-		modelPtr: modelPtr;
-		ctxPtr: ctxPtr;
-		path: path;
-		yourself.
+		          modelPtr: modelPtr;
+		          ctxPtr: ctxPtr;
+		          path: path;
+		          yourself.
 
 	loadedModels at: aModel name put: handle
 ]
@@ -296,6 +282,7 @@ AILocalBackend >> streamText: prompt model: aModel options: options onToken: aBl
 
 	vocabPtr := lib llamaModelGetVocab: handle modelPtr.
 	tokens := self tokenizeString: prompt vocab: vocabPtr addSpecial: true.
+	lib llamaKvSelfClear: handle ctxPtr.
 	self decodeTokens: tokens context: handle ctxPtr.
 
 	sampler := self buildSampler: options.
@@ -305,9 +292,7 @@ AILocalBackend >> streamText: prompt model: aModel options: options onToken: aBl
 	[
 		[ generated < maxTokens ] whileTrue: [
 				nextToken := lib llamaSamplerSample: sampler context: handle ctxPtr idx: -1.
-				(lib llamaVocabIsEog: vocabPtr token: nextToken) ifTrue: [ ^ self ].
-
-				"llama_sampler_sample already accepts the chosen token; do not
+				(lib llamaVocabIsEog: vocabPtr token: nextToken) ifTrue: [ ^ self ]. "llama_sampler_sample already accepts the chosen token; do not
 			 double-accept or stateful samplers (penalties, mirostat) drift."
 				piece := self detokenize: nextToken vocab: vocabPtr.
 				piece ifNotEmpty: [ aBlock value: piece ].

@@ -154,14 +154,16 @@ AILlamaContextParams >> defrag_thold: anObject [
 { #category : 'accessing - structure variables' }
 AILlamaContextParams >> embeddings [
 	"This method was automatically generated"
-	^handle unsignedByteAt: OFFSET_EMBEDDINGS
+
+	^ (self uint8AtOffset: OFFSET_EMBEDDINGS) ~= 0
 ]
 
 { #category : 'accessing - structure variables' }
-AILlamaContextParams >> embeddings: anObject [
-	self getHandle uint8AtOffset: OFFSET_EMBEDDINGS put: (anObject
-		ifTrue: [ 1 ]
-		ifFalse: [ 0 ])
+AILlamaContextParams >> embeddings: aBoolean [
+
+	self uint8AtOffset: OFFSET_EMBEDDINGS put: (aBoolean
+			 ifTrue: [ 1 ]
+			 ifFalse: [ 0 ])
 ]
 
 { #category : 'accessing - structure variables' }
