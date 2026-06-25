@@ -23,27 +23,9 @@ model straight from the image.
 the native llama.cpp runtime, either installed by the user or shipped
 with your Pharo image/application.
 
-### Build the native runtime
-
-From this repository on macOS or Linux:
-
-```sh
-sh scripts/build-native.sh
-```
-
-The script clones/builds llama.cpp as a shared library and compiles the
-small PharoInfer shim into `$HOME/pharo-infer-native/lib`.
-
-### Point PharoInfer at the shim
-
-Pharo will look for `libai_llama.so` / `libai_llama.dylib` on the
-default library search path. To override, pin it from the image:
-
-```smalltalk
-AILlamaLibrary libraryPath: '/home/me/pharo-infer-native/lib/libai_llama.so'.
-```
-
 ## Installation
+
+Load the package in Pharo. If you are using this local checkout:
 
 ```smalltalk
 Metacello new
@@ -52,22 +34,107 @@ Metacello new
   load.
 ```
 
-## Quick Start
+## Run a GGUF model from Pharo
 
-### Text completion, in-image
+Do these steps in order. The `.gguf` file alone is not enough; the
+client machine must also have the native llama.cpp runtime built or
+bundled.
+
+### 1. Build the native runtime
+
+In a terminal, from this repository:
+
+```sh
+cd /path/to/pharo-infer
+sh scripts/build-native.sh
+```
+
+The script clones/builds llama.cpp as a shared library and compiles the
+small PharoInfer shim into `$HOME/pharo-infer-native/lib`.
+
+On macOS this creates:
+
+```text
+$HOME/pharo-infer-native/lib/libai_llama.dylib
+```
+
+On Linux this creates:
+
+```text
+$HOME/pharo-infer-native/lib/libai_llama.so
+```
+
+Keep the whole `$HOME/pharo-infer-native/lib` folder together. It
+contains `libai_llama` plus the llama.cpp / ggml libraries it depends
+on.
+
+### 2. Put a model on disk
+
+Use a GGUF model file:
+
+```sh
+mkdir -p "$HOME/pharo-models"
+cp /path/to/model.gguf "$HOME/pharo-models/model.gguf"
+```
+
+### 3. Point Pharo at the native library
+
+Pharo will look for `libai_llama.so` / `libai_llama.dylib` on the
+default library search path. To override, pin it from the image:
+
+macOS:
 
 ```smalltalk
-| manager engine model |
-manager := AIModelManager default.
-manager currentBackend: AILocalBackend new.
+AILlamaLibrary libraryPath:
+  (FileLocator home / 'pharo-infer-native' / 'lib' / 'libai_llama.dylib') fullName.
+```
+
+Linux:
+
+```smalltalk
+AILlamaLibrary libraryPath:
+  (FileLocator home / 'pharo-infer-native' / 'lib' / 'libai_llama.so') fullName.
+```
+
+### 4. Load the model and ask it something
+
+Run this in a Pharo Playground:
+
+```smalltalk
+| backend manager engine model answer |
+
+backend := AILocalBackend new
+  nThreads: 8;
+  contextSize: 2048;
+  batchSize: 512;
+  nGpuLayers: 0;
+  yourself.
+
+manager := AIModelManager new.
+manager currentBackend: backend.
 
 model := manager loadModel:
-    (FileLocator home / 'models' / 'tiny.gguf') fullName.
+  (FileLocator home / 'pharo-models' / 'model.gguf') fullName.
 
-engine := AIInferenceEngine default.
-engine backend: manager currentBackend.
-engine complete: 'Hello from Pharo!' model: model name.
+engine := AIInferenceEngine new.
+engine modelManager: manager.
+
+answer := engine
+  complete: 'Say hello from Pharo in one short sentence.'
+  model: model name.
+
+Transcript show: answer; cr.
+answer
 ```
+
+For Apple Silicon / Metal GPU offload, try this before loading the
+model:
+
+```smalltalk
+backend nGpuLayers: 999.
+```
+
+## More examples
 
 ### Streaming
 
