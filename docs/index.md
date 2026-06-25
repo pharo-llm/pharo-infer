@@ -25,11 +25,14 @@ the model straight from the Pharo image.
 ## Requirements
 
 - Pharo 13 or 14 (UFFI support required).
-- A shared build of llama.cpp that exposes the b4000+ API:
-  - Linux: `libllama.so`
-  - macOS: `libllama.dylib`
-  - Windows: `llama.dll`
+- A native PharoInfer shim linked to a shared llama.cpp build:
+  - Linux: `libai_llama.so`
+  - macOS: `libai_llama.dylib`
+  - Windows: `ai_llama.dll`
 - A `.gguf` model file.
+
+The GGUF file is only the model. The native runtime still has to be
+installed on the client machine or bundled with the image/application.
 
 ## Installation
 
@@ -42,13 +45,24 @@ Metacello new
 
 ## Configuration
 
-### Point PharoInfer at your libllama
+### Build the native runtime
+
+On macOS or Linux:
+
+```sh
+sh scripts/build-native.sh
+```
+
+This builds llama.cpp as a shared library, builds the PharoInfer shim,
+and places the result under `$HOME/pharo-infer-native/lib`.
+
+### Point PharoInfer at your shim
 
 If the library is not on the system's default search path, pin it
 explicitly:
 
 ```smalltalk
-AILlamaLibrary libraryPath: '/home/me/llama.cpp/build/libllama.so'.
+AILlamaLibrary libraryPath: '/home/me/pharo-infer-native/lib/libai_llama.so'.
 ```
 
 ### Models directory
@@ -130,14 +144,13 @@ AILocalBackend new
 
 ## Architecture
 
-- `AILlamaLibrary` — `FFILibrary` mapping the llama.cpp C entry points
-  we call (`llama_backend_init`, `llama_model_load_from_file`,
-  `llama_init_from_model`, `llama_tokenize`, `llama_decode`,
-  `llama_sampler_*`, `llama_token_to_piece`, etc.).
+- `AILlamaLibrary` — `FFILibrary` mapping the stable PharoInfer shim
+  entry points. The shim calls llama.cpp and owns the volatile C struct
+  layouts.
 - `AILlamaModelParams`, `AILlamaContextParams`,
   `AILlamaSamplerChainParams`, `AILlamaBatch` —
-  `FFIExternalStructure` mirrors of the by-value records used by the
-  C API.
+  legacy mirrors kept for source compatibility; the production backend
+  no longer passes those structs through UFFI.
 - `AILocalBackend` — single production backend. Owns the model/context
   lifecycle, the tokenization path, the sampler chain, and the
   decode/sample/detokenize loop used for both synchronous and
@@ -163,7 +176,8 @@ backend refuses anything else.
 
 ## Testing
 
-Tests that exercise the FFI path require `libllama` to be available.
+Tests that exercise the FFI path require the native shim and linked
+llama.cpp library to be available.
 Pure logic tests (models, formats, options, manager, config) run
 against `AIMockBackend` and do not need the native library.
 

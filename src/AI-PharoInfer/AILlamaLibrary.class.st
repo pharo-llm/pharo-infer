@@ -1,17 +1,17 @@
 "
-I am the UFFI binding to the llama.cpp shared library (libllama).
+I am the UFFI binding to PharoInfer's small llama.cpp shim library.
 
-I expose the minimum set of C entry points needed to run a GGUF model
-end-to-end from inside a Pharo image: backend init, model/context
-lifecycle, tokenization, decoding and sampling.
+Do not bind Pharo directly to llama.cpp structs here. llama.cpp changes
+the layout of by-value structs such as llama_model_params,
+llama_context_params and llama_batch across releases. The shim is
+compiled against the user's installed llama.cpp headers and exposes a
+stable pointer/int/string ABI to Pharo.
 
-The library path can be overridden globally via
-  AILlamaLibrary libraryPath: '/absolute/path/to/libllama.so'.
+Build the shim with:
+  sh scripts/build-native.sh
 
-The bindings target the modern llama.cpp API (b4000 and later: the
-'llama_model_load_from_file' / 'llama_init_from_model' / sampler-chain
-family). On Linux look for libllama.so, on macOS libllama.dylib, on
-Windows llama.dll.
+Then point the image at it:
+  AILlamaLibrary libraryPath: '/absolute/path/to/libai_llama.dylib'.
 "
 Class {
 	#name : 'AILlamaLibrary',
@@ -44,236 +44,166 @@ AILlamaLibrary class >> reset [
 { #category : 'backend' }
 AILlamaLibrary >> llamaBackendFree [
 
-	^ self ffiCall: #( void llama_backend_free ( void ) )
+	^ self ffiCall: #( void ai_llama_backend_free ( void ) )
 ]
 
 { #category : 'backend' }
 AILlamaLibrary >> llamaBackendInit [
 
-	^ self ffiCall: #( void llama_backend_init ( void ) )
+	^ self ffiCall: #( void ai_llama_backend_init ( void ) )
 ]
 
-{ #category : 'batch' }
-AILlamaLibrary >> llamaBatchGetOne: tokensBuffer nTokens: nTokens [
-	"Build a convenience llama_batch wrapping a contiguous token array.
-	 Returned by value: we receive an AILlamaBatch record."
-
-	^ self ffiCall: #( AILlamaBatch llama_batch_get_one (
-		void * tokensBuffer,
-		int32 nTokens ) )
-]
-
-{ #category : 'model' }
-AILlamaLibrary >> llamaContextDefaultParams [
-
-"Return a fresh AILlamaContextParams filled with llama.cpp defaults
-	 (by-value return)."
-
-	^ self ffiCall: #( AILlamaContextParams llama_context_default_params ( void ) )
-]
-
-{ #category : 'model' }
-AILlamaLibrary >> llamaContextDefaultParamsInto: aPointer [
-
-	^ self ffiCall: #( void ai_llama_context_default_params ( void * aPointer ) )
-]
-
-{ #category : 'batch' }
-AILlamaLibrary >> llamaDecode: ctxPtr batch: aBatch [
-	"Run the forward pass for the given batch. Returns 0 on success.
-	 Called on the FFI worker thread so the Pharo UI stays responsive
-	 while the native decode (which can take hundreds of ms per token
-	 on CPU) runs."
+{ #category : 'context' }
+AILlamaLibrary >> llamaDecodeTokens: ctxPtr tokens: tokensBuffer nTokens: nTokens [
+	"Decode a contiguous int32 token array. The C shim builds llama_batch
+	inside native code so Pharo does not need to mirror that struct."
 
 	^ self
-		ffiCall: #( int32 llama_decode (
+		ffiCall: #( int32 ai_llama_decode_tokens (
 			void * ctxPtr,
-			AILlamaBatch aBatch ) )
+			void * tokensBuffer,
+			int32 nTokens ) )
 		options: #( optThreaded )
 ]
 
 { #category : 'context' }
 AILlamaLibrary >> llamaFree: ctxPtr [
 
-	^ self ffiCall: #( void llama_free ( void * ctxPtr ) )
+	^ self ffiCall: #( void ai_llama_free ( void * ctxPtr ) )
 ]
 
 { #category : 'context' }
 AILlamaLibrary >> llamaGetEmbeddings: ctxPtr [
-	"Return a raw float * into the embedding vector for the last decoded
-	 sequence. Requires the context to have been created with
-	 embeddings=true."
 
-	^ self ffiCall: #( void * llama_get_embeddings ( void * ctxPtr ) )
+	^ self ffiCall: #( void * ai_llama_get_embeddings ( void * ctxPtr ) )
 ]
 
 { #category : 'context' }
 AILlamaLibrary >> llamaGetLogits: ctxPtr [
-	"Return a raw float * into the logits of the last decoded position."
 
-	^ self ffiCall: #( void * llama_get_logits ( void * ctxPtr ) )
+	^ self ffiCall: #( void * ai_llama_get_logits ( void * ctxPtr ) )
 ]
 
 { #category : 'context' }
-AILlamaLibrary >> llamaInitFromModel: modelPtr params: paramsStruct [
-	"Create a new llama_context * from a model and context params.
-	 Context creation allocates KV-cache buffers and can take seconds."
+AILlamaLibrary >> llamaInitFromModel: modelPtr contextSize: nCtx batchSize: nBatch threads: nThreads embeddings: embeddingsEnabled [
+	"Create a llama_context * using default llama.cpp params plus the
+	Pharo-controlled values. The shim owns the real struct layout."
 
 	^ self
-		ffiCall: #( void * llama_init_from_model (
+		ffiCall: #( void * ai_llama_init_from_model (
 			void * modelPtr,
-			AILlamaContextParams paramsStruct ) )
+			uint32 nCtx,
+			uint32 nBatch,
+			int32 nThreads,
+			bool embeddingsEnabled ) )
 		options: #( optThreaded )
 ]
 
 { #category : 'context' }
 AILlamaLibrary >> llamaKvSelfClear: ctxPtr [
-	"Clear the KV cache (new conversation)."
+	"Clear the current context memory. The shim supports both current
+	llama_memory_clear() and older llama_kv_self_clear() runtimes."
 
-	^ self ffiCall: #( void llama_kv_self_clear ( void * ctxPtr ) )
-]
-
-{ #category : 'model' }
-AILlamaLibrary >> llamaModelDefaultParams [
-"Return a fresh AILlamaModelParams filled with llama.cpp defaults
-	 (by-value return)."
-
-	^ self ffiCall: #( AILlamaModelParams llama_model_default_params ( void ) )
-]
-
-{ #category : 'context' }
-AILlamaLibrary >> llamaModelDefaultParamsInto: aPointer [
-
-	^ self ffiCall: #( void ai_llama_model_default_params ( void * aPointer ) )
+	^ self ffiCall: #( void ai_llama_memory_clear ( void * ctxPtr ) )
 ]
 
 { #category : 'model' }
 AILlamaLibrary >> llamaModelFree: modelPtr [
 
-	^ self ffiCall: #( void llama_model_free ( void * modelPtr ) )
+	^ self ffiCall: #( void ai_llama_model_free ( void * modelPtr ) )
 ]
 
 { #category : 'model' }
 AILlamaLibrary >> llamaModelGetVocab: modelPtr [
-	"Return the opaque llama_vocab * for this model."
 
-	^ self ffiCall: #( void * llama_model_get_vocab ( void * modelPtr ) )
+	^ self ffiCall: #( void * ai_llama_model_get_vocab ( void * modelPtr ) )
 ]
 
-{ #category : 'context' }
-AILlamaLibrary >> llamaModelLoadFromFile: pathString params: paramsStruct [
-	"Load a model file and return an opaque llama_model * pointer.
-	 paramsStruct must be an AILlamaModelParams instance.
-	 mmap'ing weights and building the model graph can take many seconds
-	 for a multi-GB GGUF, so we run it on the FFI worker thread."
+{ #category : 'model' }
+AILlamaLibrary >> llamaModelLoadFromFile: pathString nGpuLayers: nGpuLayers useMmap: useMmap [
 
 	^ self
-		ffiCall: #( void * llama_model_load_from_file (
+		ffiCall: #( void * ai_llama_model_load_from_file (
 			String pathString,
-			AILlamaModelParams paramsStruct ) )
+			int32 nGpuLayers,
+			bool useMmap ) )
 		options: #( optThreaded )
 ]
 
 { #category : 'model' }
 AILlamaLibrary >> llamaModelNCtxTrain: modelPtr [
-	"Maximum training context length supported by the model."
 
-	^ self ffiCall: #( int32 llama_model_n_ctx_train ( void * modelPtr ) )
+	^ self ffiCall: #( int32 ai_llama_model_n_ctx_train ( void * modelPtr ) )
 ]
 
 { #category : 'model' }
 AILlamaLibrary >> llamaModelNEmbd: modelPtr [
 
-	^ self ffiCall: #( int32 llama_model_n_embd ( void * modelPtr ) )
+	^ self ffiCall: #( int32 ai_llama_model_n_embd ( void * modelPtr ) )
 ]
 
 { #category : 'context' }
 AILlamaLibrary >> llamaNCtx: ctxPtr [
 
-	^ self ffiCall: #( uint32 llama_n_ctx ( void * ctxPtr ) )
+	^ self ffiCall: #( uint32 ai_llama_n_ctx ( void * ctxPtr ) )
 ]
 
 { #category : 'sampling' }
-AILlamaLibrary >> llamaSamplerAccept: samplerPtr token: aToken [
+AILlamaLibrary >> llamaSamplerChainAddDist: chainPtr seed: seed [
 
-	^ self ffiCall: #( void llama_sampler_accept (
-		void * samplerPtr,
-		int32 aToken ) )
-]
-
-{ #category : 'sampling' }
-AILlamaLibrary >> llamaSamplerChainAdd: chainPtr sampler: samplerPtr [
-
-	^ self ffiCall: #( void llama_sampler_chain_add (
+	^ self ffiCall: #( void ai_llama_sampler_chain_add_dist (
 		void * chainPtr,
-		void * samplerPtr ) )
-]
-
-{ #category : 'model' }
-AILlamaLibrary >> llamaSamplerChainDefaultParams [
-
-^ self ffiCall: #( AILlamaSamplerChainParams llama_sampler_chain_default_params ( void ) )
-]
-
-{ #category : 'model' }
-AILlamaLibrary >> llamaSamplerChainDefaultParamsInto: aPointer [
-
-	^ self ffiCall: #( void ai_llama_sampler_chain_default_params ( void * aPointer ) )
+		uint32 seed ) )
 ]
 
 { #category : 'sampling' }
-AILlamaLibrary >> llamaSamplerChainInit: paramsStruct [
+AILlamaLibrary >> llamaSamplerChainAddGreedy: chainPtr [
 
-	^ self ffiCall: #( void * llama_sampler_chain_init (
-		AILlamaSamplerChainParams paramsStruct ) )
+	^ self ffiCall: #( void ai_llama_sampler_chain_add_greedy ( void * chainPtr ) )
+]
+
+{ #category : 'sampling' }
+AILlamaLibrary >> llamaSamplerChainAddTemp: chainPtr temperature: temperature [
+
+	^ self ffiCall: #( void ai_llama_sampler_chain_add_temp (
+		void * chainPtr,
+		float32 temperature ) )
+]
+
+{ #category : 'sampling' }
+AILlamaLibrary >> llamaSamplerChainAddTopK: chainPtr k: k [
+
+	^ self ffiCall: #( void ai_llama_sampler_chain_add_top_k (
+		void * chainPtr,
+		int32 k ) )
+]
+
+{ #category : 'sampling' }
+AILlamaLibrary >> llamaSamplerChainAddTopP: chainPtr p: p minKeep: minKeep [
+
+	^ self ffiCall: #( void ai_llama_sampler_chain_add_top_p (
+		void * chainPtr,
+		float32 p,
+		uint64 minKeep ) )
+]
+
+{ #category : 'sampling' }
+AILlamaLibrary >> llamaSamplerChainInit [
+
+	^ self ffiCall: #( void * ai_llama_sampler_chain_init ( void ) )
 ]
 
 { #category : 'sampling' }
 AILlamaLibrary >> llamaSamplerFree: samplerPtr [
 
-	^ self ffiCall: #( void llama_sampler_free ( void * samplerPtr ) )
+	^ self ffiCall: #( void ai_llama_sampler_free ( void * samplerPtr ) )
 ]
 
 { #category : 'sampling' }
-AILlamaLibrary >> llamaSamplerInitDist: seed [
-
-	^ self ffiCall: #( void * llama_sampler_init_dist ( uint32 seed ) )
-]
-
-{ #category : 'sampling' }
-AILlamaLibrary >> llamaSamplerInitGreedy [
-
-	^ self ffiCall: #( void * llama_sampler_init_greedy ( void ) )
-]
-
-{ #category : 'sampling' }
-AILlamaLibrary >> llamaSamplerInitTemp: t [
-
-	^ self ffiCall: #( void * llama_sampler_init_temp ( float32 t ) )
-]
-
-{ #category : 'sampling' }
-AILlamaLibrary >> llamaSamplerInitTopK: k [
-
-	^ self ffiCall: #( void * llama_sampler_init_top_k ( int32 k ) )
-]
-
-{ #category : 'sampling' }
-AILlamaLibrary >> llamaSamplerInitTopP: p minKeep: minKeep [
-
-	^ self ffiCall: #( void * llama_sampler_init_top_p (
-		float32 p,
-		uint64 minKeep ) )
-]
-
-{ #category : 'context' }
 AILlamaLibrary >> llamaSamplerSample: samplerPtr context: ctxPtr idx: idx [
-	"Pulls logits from ctxPtr and walks the sampler chain. For large
-	 vocabularies (128k+ tokens) this is slow enough to stutter the UI,
-	 so we run it on the FFI worker thread."
 
 	^ self
-		ffiCall: #( int32 llama_sampler_sample (
+		ffiCall: #( int32 ai_llama_sampler_sample (
 			void * samplerPtr,
 			void * ctxPtr,
 			int32 idx ) )
@@ -282,10 +212,8 @@ AILlamaLibrary >> llamaSamplerSample: samplerPtr context: ctxPtr idx: idx [
 
 { #category : 'tokenization' }
 AILlamaLibrary >> llamaTokenToPiece: vocabPtr token: aToken buf: aBuffer length: bufLen lstrip: lstrip special: special [
-	"Detokenize a single token ID into a UTF-8 fragment in aBuffer.
-	 Returns number of bytes written, or -needed if the buffer is too small."
 
-	^ self ffiCall: #( int32 llama_token_to_piece (
+	^ self ffiCall: #( int32 ai_llama_token_to_piece (
 		void * vocabPtr,
 		int32 aToken,
 		void * aBuffer,
@@ -295,14 +223,11 @@ AILlamaLibrary >> llamaTokenToPiece: vocabPtr token: aToken buf: aBuffer length:
 ]
 
 { #category : 'tokenization' }
-AILlamaLibrary >> llamaTokenize: vocabPtr text: textString textLen: textLen tokens: tokensBuffer nTokensMax: nTokensMax addSpecial: addSpecial parseSpecial: parseSpecial [
-	"Tokenize a UTF-8 string into tokensBuffer (Int32 *).
-	 Returns number of tokens written on success, or a negative count
-	 (-needed) when the buffer is too small."
+AILlamaLibrary >> llamaTokenize: vocabPtr textBytes: textBytes textLen: textLen tokens: tokensBuffer nTokensMax: nTokensMax addSpecial: addSpecial parseSpecial: parseSpecial [
 
-	^ self ffiCall: #( int32 llama_tokenize (
+	^ self ffiCall: #( int32 ai_llama_tokenize (
 		void * vocabPtr,
-		String textString,
+		void * textBytes,
 		int32 textLen,
 		void * tokensBuffer,
 		int32 nTokensMax,
@@ -313,19 +238,19 @@ AILlamaLibrary >> llamaTokenize: vocabPtr text: textString textLen: textLen toke
 { #category : 'vocab' }
 AILlamaLibrary >> llamaVocabBos: vocabPtr [
 
-	^ self ffiCall: #( int32 llama_vocab_bos ( void * vocabPtr ) )
+	^ self ffiCall: #( int32 ai_llama_vocab_bos ( void * vocabPtr ) )
 ]
 
 { #category : 'vocab' }
 AILlamaLibrary >> llamaVocabEos: vocabPtr [
 
-	^ self ffiCall: #( int32 llama_vocab_eos ( void * vocabPtr ) )
+	^ self ffiCall: #( int32 ai_llama_vocab_eos ( void * vocabPtr ) )
 ]
 
 { #category : 'vocab' }
 AILlamaLibrary >> llamaVocabIsEog: vocabPtr token: aToken [
 
-	^ self ffiCall: #( bool llama_vocab_is_eog (
+	^ self ffiCall: #( bool ai_llama_vocab_is_eog (
 		void * vocabPtr,
 		int32 aToken ) )
 ]
@@ -333,29 +258,29 @@ AILlamaLibrary >> llamaVocabIsEog: vocabPtr token: aToken [
 { #category : 'vocab' }
 AILlamaLibrary >> llamaVocabNTokens: vocabPtr [
 
-	^ self ffiCall: #( int32 llama_vocab_n_tokens ( void * vocabPtr ) )
+	^ self ffiCall: #( int32 ai_llama_vocab_n_tokens ( void * vocabPtr ) )
 ]
 
 { #category : 'configuration' }
 AILlamaLibrary >> macLibraryName [
 
-	^ self class libraryPath ifNil: [ 'libllama.dylib' ]
+	^ self class libraryPath ifNil: [ 'libai_llama.dylib' ]
 ]
 
 { #category : 'configuration' }
 AILlamaLibrary >> unix64LibraryName [
 
-	^ self class libraryPath ifNil: [ 'libllama.so' ]
+	^ self class libraryPath ifNil: [ 'libai_llama.so' ]
 ]
 
 { #category : 'configuration' }
 AILlamaLibrary >> unixLibraryName [
 
-	^ self class libraryPath ifNil: [ 'libllama.so' ]
+	^ self class libraryPath ifNil: [ 'libai_llama.so' ]
 ]
 
 { #category : 'configuration' }
 AILlamaLibrary >> win32LibraryName [
 
-	^ self class libraryPath ifNil: [ 'llama.dll' ]
+	^ self class libraryPath ifNil: [ 'ai_llama.dll' ]
 ]

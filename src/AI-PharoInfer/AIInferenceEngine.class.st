@@ -52,16 +52,17 @@ AIInferenceEngine >> complete: prompt model: modelName [
 AIInferenceEngine >> complete: prompt model: modelName options: options [
 
 	"Generate text completion with custom options"
-	| model result |
+	| model modelBackend result |
 
 	model := self resolveModelNamed: modelName.
 	model ifNil: [
 		Error signal: 'Model not found: ', modelName ].
 
+	modelBackend := self backendForModel: model.
 	model isLoaded ifFalse: [
 		model load ].
 
-	result := self backend generateText: prompt model: model options: options.
+	result := modelBackend generateText: prompt model: model options: options.
 
 	^ result
 ]
@@ -70,16 +71,17 @@ AIInferenceEngine >> complete: prompt model: modelName options: options [
 AIInferenceEngine >> embeddings: text model: modelName [
 
 	"Generate embeddings for the given text"
-	| model result |
+	| model modelBackend result |
 
 	model := self resolveModelNamed: modelName.
 	model ifNil: [
 		Error signal: 'Model not found: ', modelName ].
 
+	modelBackend := self backendForModel: model.
 	model isLoaded ifFalse: [
 		model load ].
 
-	result := self backend generateEmbeddings: text model: model.
+	result := modelBackend generateEmbeddings: text model: model.
 
 	^ result
 ]
@@ -101,6 +103,13 @@ AIInferenceEngine >> modelManager [
 AIInferenceEngine >> modelManager: anObject [
 
 	modelManager := anObject
+]
+
+{ #category : 'private' }
+AIInferenceEngine >> backendForModel: aModel [
+
+	aModel backend ifNil: [ aModel backend: self backend ].
+	^ aModel backend
 ]
 
 { #category : 'private' }
@@ -131,14 +140,15 @@ AIInferenceEngine >> stream: prompt model: modelName onToken: aBlock [
 AIInferenceEngine >> stream: prompt model: modelName options: options onToken: aBlock [
 
 	"Stream text generation with custom options"
-	| model |
+	| model modelBackend |
 
 	model := self resolveModelNamed: modelName.
 	model ifNil: [
 		Error signal: 'Model not found: ', modelName ].
 
+	modelBackend := self backendForModel: model.
 	model isLoaded ifFalse: [
 		model load ].
 
-	self backend streamText: prompt model: model options: options onToken: aBlock
+	modelBackend streamText: prompt model: model options: options onToken: aBlock
 ]

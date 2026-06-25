@@ -26,7 +26,10 @@ AIEmbeddingsGenerator class >> forModel: aModel [
 { #category : 'accessing' }
 AIEmbeddingsGenerator >> backend [
 
-	^ backend ifNil: [ backend := AILocalBackend new ]
+	backend ifNotNil: [ ^ backend ].
+	model ifNotNil: [
+		model backend ifNotNil: [ ^ model backend ] ].
+	^ backend := AILocalBackend new
 ]
 
 { #category : 'accessing' }
@@ -77,6 +80,7 @@ AIEmbeddingsGenerator >> dimensions: anObject [
 AIEmbeddingsGenerator >> embed: text [
 
 	"Generate embeddings for a single text"
+	self model backend ifNil: [ self model backend: self backend ].
 	^ self backend generateEmbeddings: text model: self model
 ]
 

@@ -14,18 +14,33 @@ model straight from the image.
 ## Requirements
 
 - Pharo 13 or 14 (UFFI must be available).
-- A shared build of llama.cpp (`libllama.so` on Linux,
-  `libllama.dylib` on macOS, `llama.dll` on Windows).
-  The bindings target the modern API (b4000 and later).
+- A native PharoInfer shim (`libai_llama.so` on Linux,
+  `libai_llama.dylib` on macOS, `ai_llama.dll` on Windows), linked to
+  a shared build of llama.cpp.
 - A `.gguf` model file.
 
-### Point PharoInfer at your libllama
+`model.gguf` is the model weights only. The client machine also needs
+the native llama.cpp runtime, either installed by the user or shipped
+with your Pharo image/application.
 
-Pharo will look for `libllama.so` (or the platform equivalent) on the
+### Build the native runtime
+
+From this repository on macOS or Linux:
+
+```sh
+sh scripts/build-native.sh
+```
+
+The script clones/builds llama.cpp as a shared library and compiles the
+small PharoInfer shim into `$HOME/pharo-infer-native/lib`.
+
+### Point PharoInfer at the shim
+
+Pharo will look for `libai_llama.so` / `libai_llama.dylib` on the
 default library search path. To override, pin it from the image:
 
 ```smalltalk
-AILlamaLibrary libraryPath: '/home/me/llama.cpp/build/libllama.so'.
+AILlamaLibrary libraryPath: '/home/me/pharo-infer-native/lib/libai_llama.so'.
 ```
 
 ## Installation
@@ -86,10 +101,12 @@ AILocalBackend new
 
 ## Architecture
 
-- `AILlamaLibrary` — `FFILibrary` mapping the llama.cpp C entry points.
+- `AILlamaLibrary` — `FFILibrary` mapping the PharoInfer shim entry
+  points.
 - `AILlamaModelParams`, `AILlamaContextParams`, `AILlamaBatch`,
-  `AILlamaSamplerChainParams` — `FFIExternalStructure` mirrors of the
-  by-value records used by llama.cpp.
+  `AILlamaSamplerChainParams` — legacy structure mirrors kept for
+  source compatibility; the production backend no longer passes them
+  through UFFI.
 - `AILocalBackend` — drives llama.cpp: loads a model, runs
   tokenization + decode + sampling, and detokenizes back to UTF-8.
 - `AILocalModelHandle` — owns the opaque `(model *, context *)` pair

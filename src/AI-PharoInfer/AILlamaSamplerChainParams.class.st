@@ -1,6 +1,9 @@
 "
-I mirror the llama.cpp C struct 'llama_sampler_chain_params'. A single
-bool field (no_perf) in current releases.
+I mirror the llama.cpp C struct 'llama_sampler_chain_params'.
+
+This legacy mirror is kept for source compatibility. The production
+backend no longer passes this struct through UFFI; the native
+PharoInfer shim creates sampler chains inside C.
 "
 Class {
 	#name : 'AILlamaSamplerChainParams',

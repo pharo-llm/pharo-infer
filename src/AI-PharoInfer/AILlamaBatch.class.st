@@ -2,9 +2,9 @@
 I mirror the llama.cpp C struct 'llama_batch'. Instances are created by
 llama_batch_get_one() and consumed by llama_decode().
 
-For simple use cases we never touch the fields directly: we just obtain
-a batch from #llamaBatchGetOne:nTokens: and hand it back to
-#llamaDecode:batch:.
+This legacy mirror is kept for source compatibility. The production
+backend no longer passes this struct through UFFI; the native
+PharoInfer shim creates llama_batch values inside C.
 "
 Class {
 	#name : 'AILlamaBatch',

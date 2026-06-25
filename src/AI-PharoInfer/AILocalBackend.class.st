@@ -15,8 +15,8 @@ engine backend: manager currentBackend.
 engine complete: 'Hello World !' model: model name.
 ```
 
-libllama location can be overridden globally via
-  AILlamaLibrary libraryPath: '/abs/path/to/libllama.so'.
+Native shim location can be overridden globally via
+  AILlamaLibrary libraryPath: '/abs/path/to/libai_llama.so'.
 "
 Class {
 	#name : 'AILocalBackend',
@@ -26,7 +26,9 @@ Class {
 		'loadedModels',
 		'nThreads',
 		'contextSize',
+		'batchSize',
 		'nGpuLayers',
+		'useMmap',
 		'backendInitialized',
 		'embeddings'
 	],
@@ -37,36 +39,40 @@ Class {
 { #category : 'private' }
 AILocalBackend >> buildSampler: options [
 
-	| lib chainParams chain seed |
+	| lib chain seed |
 	lib := self library.
-	chainParams := lib llamaSamplerChainDefaultParams.
-	chain := lib llamaSamplerChainInit: chainParams.
+	chain := lib llamaSamplerChainInit.
 
 	options topK > 0 ifTrue: [
-		lib
-			llamaSamplerChainAdd: chain
-			sampler: (lib llamaSamplerInitTopK: options topK) ].
+		lib llamaSamplerChainAddTopK: chain k: options topK ].
 
 	options topP < 1.0 ifTrue: [
 		lib
-			llamaSamplerChainAdd: chain
-			sampler: (lib llamaSamplerInitTopP: options topP minKeep: 1) ].
+			llamaSamplerChainAddTopP: chain
+			p: options topP
+			minKeep: 1 ].
 
 	options temperature > 0.0
 		ifTrue: [
-			lib
-				llamaSamplerChainAdd: chain
-				sampler: (lib llamaSamplerInitTemp: options temperature).
+			lib llamaSamplerChainAddTemp: chain temperature: options temperature.
 			seed := options seed ifNil: [ 16rFFFFFFFF ].
-			lib
-				llamaSamplerChainAdd: chain
-				sampler: (lib llamaSamplerInitDist: seed) ]
+			lib llamaSamplerChainAddDist: chain seed: seed ]
 		ifFalse: [
-			lib
-				llamaSamplerChainAdd: chain
-				sampler: lib llamaSamplerInitGreedy ].
+			lib llamaSamplerChainAddGreedy: chain ].
 
 	^ chain
+]
+
+{ #category : 'accessing' }
+AILocalBackend >> batchSize [
+
+	^ batchSize ifNil: [ 512 ]
+]
+
+{ #category : 'accessing' }
+AILocalBackend >> batchSize: anInteger [
+
+	batchSize := anInteger
 ]
 
 { #category : 'accessing' }
@@ -84,7 +90,7 @@ AILocalBackend >> contextSize: anInteger [
 { #category : 'private' }
 AILocalBackend >> decodeTokens: tokenArray context: ctxPtr [
 
-	| lib buffer batch rc |
+	| lib buffer rc |
 	lib := self library.
 	buffer := FFIExternalArray
 		externalNewType: 'int32'
@@ -92,10 +98,10 @@ AILocalBackend >> decodeTokens: tokenArray context: ctxPtr [
 	[
 		1 to: tokenArray size do: [ :i |
 			buffer at: i put: (tokenArray at: i) ].
-		batch := lib
-			llamaBatchGetOne: buffer getHandle
+		rc := lib
+			llamaDecodeTokens: ctxPtr
+			tokens: buffer getHandle
 			nTokens: tokenArray size.
-		rc := lib llamaDecode: ctxPtr batch: batch.
 		rc ~= 0 ifTrue: [
 			Error signal: 'llama_decode failed with code ', rc asString ] ]
 		ensure: [ buffer free ]
@@ -216,25 +222,32 @@ AILocalBackend >> library [
 { #category : 'operations' }
 AILocalBackend >> loadModel: aModel [
 
-	| modelParams ctxParams modelPtr ctxPtr handle path |
+	| modelPtr ctxPtr handle path |
 	(loadedModels includesKey: aModel name) ifTrue: [ ^ self ].
 
 	aModel path ifNil: [ Error signal: 'Model has no path: ' , aModel name ].
 	aModel path exists ifFalse: [ Error signal: 'Model file not found: ' , aModel path fullName ].
+	aModel format ifNil: [
+		aModel format: (AIModelFormat detectFromFile: aModel path) ].
+	aModel format extension = 'gguf' ifFalse: [
+		Error signal: 'Only GGUF models can be loaded by AILocalBackend: ' , aModel path fullName ].
 
 	self ensureBackendInitialized.
 
 	path := aModel path fullName.
 
-	modelParams := self library llamaModelDefaultParams.
-	modelParams nGpuLayers: self nGpuLayers.
-
-	modelPtr := self library llamaModelLoadFromFile: path params: modelParams.
+	modelPtr := self library
+		llamaModelLoadFromFile: path
+		nGpuLayers: self nGpuLayers
+		useMmap: self useMmap.
 	modelPtr isNull ifTrue: [ Error signal: 'llama_model_load_from_file failed for: ' , path ].
 
-	ctxParams := self library llamaContextDefaultParams.
-	
-	ctxPtr := self library llamaInitFromModel: modelPtr params: ctxParams.
+	ctxPtr := self library
+		llamaInitFromModel: modelPtr
+		contextSize: self contextSize
+		batchSize: self batchSize
+		threads: self nThreads
+		embeddings: self embeddings.
 	ctxPtr isNull ifTrue: [
 			self library llamaModelFree: modelPtr.
 			Error signal: 'llama_init_from_model failed for: ' , path ].
@@ -270,6 +283,18 @@ AILocalBackend >> nThreads [
 AILocalBackend >> nThreads: anInteger [
 
 	nThreads := anInteger
+]
+
+{ #category : 'accessing' }
+AILocalBackend >> useMmap [
+
+	^ useMmap ifNil: [ true ]
+]
+
+{ #category : 'accessing' }
+AILocalBackend >> useMmap: aBoolean [
+
+	useMmap := aBoolean
 ]
 
 { #category : 'operations' }
@@ -314,7 +339,7 @@ AILocalBackend >> tokenizeString: aString vocab: vocabPtr addSpecial: addSpecial
 	[
 		written := lib
 			llamaTokenize: vocabPtr
-			text: aString
+			textBytes: bytes
 			textLen: bytes size
 			tokens: buffer getHandle
 			nTokensMax: initialCap
@@ -328,7 +353,7 @@ AILocalBackend >> tokenizeString: aString vocab: vocabPtr addSpecial: addSpecial
 				size: needed.
 			written := lib
 				llamaTokenize: vocabPtr
-				text: aString
+				textBytes: bytes
 				textLen: bytes size
 				tokens: buffer getHandle
 				nTokensMax: needed

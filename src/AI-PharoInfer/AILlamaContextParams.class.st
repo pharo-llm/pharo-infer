@@ -3,9 +3,9 @@ I mirror the llama.cpp C struct 'llama_context_params' (by-value
 parameter to llama_init_from_model). Layout aligned with the
 b4000+ series.
 
-Fetch defaults via AILlamaLibrary>>llamaContextDefaultParams, set
-#nCtx:, #nBatch:, #nThreads:, #embeddings: as needed, then call
-#llamaInitFromModel:params:.
+This legacy mirror is kept for source compatibility. The production
+backend no longer passes this struct through UFFI; it calls the native
+PharoInfer shim instead so llama.cpp owns its current struct layout.
 "
 Class {
 	#name : 'AILlamaContextParams',

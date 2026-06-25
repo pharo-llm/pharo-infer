@@ -3,9 +3,9 @@ I mirror the llama.cpp C struct 'llama_model_params' (by-value parameter
 to llama_model_load_from_file). Layout is aligned with the
 b4000+ series of llama.cpp.
 
-Fetch a pre-filled instance via AILlamaLibrary>>llamaModelDefaultParams,
-mutate the fields you care about (typically #nGpuLayers: or #useMmap:),
-then pass it to #llamaModelLoadFromFile:params:.
+This legacy mirror is kept for source compatibility. The production
+backend no longer passes this struct through UFFI; it calls the native
+PharoInfer shim instead so llama.cpp owns its current struct layout.
 "
 Class {
 	#name : 'AILlamaModelParams',
