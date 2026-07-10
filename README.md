@@ -50,7 +50,9 @@ sh scripts/build-native.sh
 ```
 
 The script clones/builds llama.cpp as a shared library and compiles the
-small PharoInfer shim into `$HOME/pharo-infer-native/lib`.
+small PharoInfer shim into `$HOME/pharo-infer-native/lib`. It supports
+macOS, Linux, and Windows. On Windows, run it from Git Bash or another
+POSIX-compatible shell with CMake and a C/C++ compiler available.
 
 On macOS this creates:
 
@@ -62,6 +64,12 @@ On Linux this creates:
 
 ```text
 $HOME/pharo-infer-native/lib/libai_llama.so
+```
+
+On Windows this creates:
+
+```text
+$HOME/pharo-infer-native/lib/ai_llama.dll
 ```
 
 Keep the whole `$HOME/pharo-infer-native/lib` folder together. It
@@ -79,8 +87,11 @@ cp /path/to/model.gguf "$HOME/pharo-models/model.gguf"
 
 ### 3. Point Pharo at the native library
 
-Pharo will look for `libai_llama.so` / `libai_llama.dylib` on the
-default library search path. To override, pin it from the image:
+Pharo will look for `libai_llama.so`, `libai_llama.dylib`, or
+`ai_llama.dll` on the default library search path, and also under
+`FileLocator imageDirectory / 'pharo-infer-native' / 'lib'` and
+`FileLocator home / 'pharo-infer-native' / 'lib'`. To override, pin it
+from the image:
 
 macOS:
 
@@ -94,6 +105,13 @@ Linux:
 ```smalltalk
 AILlamaLibrary libraryPath:
   (FileLocator home / 'pharo-infer-native' / 'lib' / 'libai_llama.so') fullName.
+```
+
+Windows:
+
+```smalltalk
+AILlamaLibrary libraryPath:
+  (FileLocator home / 'pharo-infer-native' / 'lib' / 'ai_llama.dll') fullName.
 ```
 
 ### 4. Load the model and ask it something

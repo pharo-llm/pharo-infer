@@ -12,14 +12,15 @@ on:
       - main
 
 jobs:
-  build:
+  smalltalk:
     strategy:
+      fail-fast: false
       matrix:
         os: [ macos-latest, ubuntu-latest, windows-latest ]
         smalltalk: [ Pharo64-14, Pharo64-13, Moose64-13]
 
     runs-on: ${{ matrix.os }}
-    name: ${{ matrix.smalltalk }}
+    name: Test ${{ matrix.smalltalk }} on ${{ matrix.os }}
     
     steps:
       - uses: actions/checkout@v7
@@ -30,3 +31,44 @@ jobs:
       - run: smalltalkci -s ${{ matrix.smalltalk }}
         shell: bash
         timeout-minutes: 15
+
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ macos-latest, ubuntu-latest, windows-latest ]
+
+    runs-on: ${{ matrix.os }}
+    name: Native shim on ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build native runtime
+        run: sh scripts/build-native.sh
+        shell: bash
+        timeout-minutes: 30
+
+      - name: Verify native runtime output
+        run: |
+          set -euo pipefail
+          case "$RUNNER_OS" in
+            macOS)
+              test -f "$HOME/pharo-infer-native/lib/libai_llama.dylib"
+              ;;
+            Linux)
+              test -f "$HOME/pharo-infer-native/lib/libai_llama.so"
+              ;;
+            Windows)
+              test -f "$HOME/pharo-infer-native/lib/ai_llama.dll"
+              ;;
+            *)
+              echo "Unsupported runner OS: $RUNNER_OS" >&2
+              exit 1
+              ;;
+          esac
+        shell: bash

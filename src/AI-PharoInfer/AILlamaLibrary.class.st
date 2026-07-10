@@ -35,6 +35,33 @@ AILlamaLibrary class >> libraryPath: aString [
 	libraryPath := aString
 ]
 
+{ #category : 'configuration' }
+AILlamaLibrary class >> defaultLibraryDirectories [
+
+	^ {
+		  FileLocator imageDirectory / 'pharo-infer-native' / 'lib'.
+		  FileLocator home / 'pharo-infer-native' / 'lib' }
+]
+
+{ #category : 'configuration' }
+AILlamaLibrary class >> libraryPathFor: fileName [
+
+	^ self
+		  libraryPathFor: fileName
+		  inDirectories: self defaultLibraryDirectories
+]
+
+{ #category : 'configuration' }
+AILlamaLibrary class >> libraryPathFor: fileName inDirectories: directories [
+
+	self libraryPath ifNotNil: [ ^ self libraryPath ].
+	directories do: [ :directory |
+		| candidate |
+		candidate := directory / fileName.
+		candidate exists ifTrue: [ ^ candidate fullName ] ].
+	^ fileName
+]
+
 { #category : 'accessing' }
 AILlamaLibrary class >> reset [
 	<script>
@@ -264,23 +291,23 @@ AILlamaLibrary >> llamaVocabNTokens: vocabPtr [
 { #category : 'configuration' }
 AILlamaLibrary >> macLibraryName [
 
-	^ self class libraryPath ifNil: [ 'libai_llama.dylib' ]
+	^ self class libraryPathFor: 'libai_llama.dylib'
 ]
 
 { #category : 'configuration' }
 AILlamaLibrary >> unix64LibraryName [
 
-	^ self class libraryPath ifNil: [ 'libai_llama.so' ]
+	^ self class libraryPathFor: 'libai_llama.so'
 ]
 
 { #category : 'configuration' }
 AILlamaLibrary >> unixLibraryName [
 
-	^ self class libraryPath ifNil: [ 'libai_llama.so' ]
+	^ self class libraryPathFor: 'libai_llama.so'
 ]
 
 { #category : 'configuration' }
 AILlamaLibrary >> win32LibraryName [
 
-	^ self class libraryPath ifNil: [ 'ai_llama.dll' ]
+	^ self class libraryPathFor: 'ai_llama.dll'
 ]

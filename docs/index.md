@@ -47,19 +47,22 @@ Metacello new
 
 ### Build the native runtime
 
-On macOS or Linux:
+On macOS, Linux, or Windows:
 
 ```sh
 sh scripts/build-native.sh
 ```
 
 This builds llama.cpp as a shared library, builds the PharoInfer shim,
-and places the result under `$HOME/pharo-infer-native/lib`.
+and places the result under `$HOME/pharo-infer-native/lib`. On Windows,
+run the script from Git Bash or another POSIX-compatible shell with
+CMake and a C/C++ compiler available.
 
 ### Point PharoInfer at your shim
 
-If the library is not on the system's default search path, pin it
-explicitly:
+PharoInfer checks the system's default search path, the image-local
+`pharo-infer-native/lib` directory, and `$HOME/pharo-infer-native/lib`.
+If needed, pin the shim explicitly:
 
 ```smalltalk
 AILlamaLibrary libraryPath: '/home/me/pharo-infer-native/lib/libai_llama.so'.

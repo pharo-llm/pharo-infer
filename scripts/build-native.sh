@@ -5,17 +5,24 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 LLAMA_DIR=${LLAMA_DIR:-"$HOME/llama.cpp"}
 BUILD_DIR=${BUILD_DIR:-"$LLAMA_DIR/build"}
 INSTALL_DIR=${INSTALL_DIR:-"$HOME/pharo-infer-native"}
+SHIM_BUILD_DIR=${SHIM_BUILD_DIR:-"$INSTALL_DIR/build-shim"}
 UNAME_S=$(uname -s)
 
 case "$UNAME_S" in
   Darwin)
     RPATH_VALUE='@loader_path'
+    SHIM_NAME='libai_llama.dylib'
     ;;
   Linux)
     RPATH_VALUE='$ORIGIN'
+    SHIM_NAME='libai_llama.so'
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    RPATH_VALUE=''
+    SHIM_NAME='ai_llama.dll'
     ;;
   *)
-    echo "Unsupported platform for this helper script. Build native/ai_llama_shim.c as a shared library linked to llama.dll." >&2
+    echo "Unsupported platform for this helper script: $UNAME_S" >&2
     exit 1
     ;;
 esac
@@ -43,29 +50,41 @@ cmake -S "$LLAMA_DIR" -B "$BUILD_DIR" \
 
 cmake --build "$BUILD_DIR" --config Release --target llama
 
-mkdir -p "$INSTALL_DIR/lib"
-
-LIBLLAMA=$(find "$BUILD_DIR" \( -name 'libllama.dylib' -o -name 'libllama.*.dylib' -o -name 'libllama.so' -o -name 'libllama.so.*' -o -name 'llama.dll' \) | head -n 1)
+LIBLLAMA=$(find "$BUILD_DIR" \( -name 'libllama.dylib' -o -name 'libllama.*.dylib' -o -name 'libllama.so' -o -name 'libllama.so.*' -o -name 'llama.dll' -o -name 'libllama.dll' -o -name 'llama.lib' -o -name 'libllama.dll.a' \) | head -n 1)
 if [ -z "$LIBLLAMA" ]; then
   echo "Could not find libllama in $BUILD_DIR" >&2
   exit 1
 fi
 
 LIB_DIR=$(dirname "$LIBLLAMA")
-INCLUDE_FLAGS="-I$LLAMA_DIR/include -I$LLAMA_DIR/ggml/include"
+
+cmake -S "$ROOT_DIR/native" -B "$SHIM_BUILD_DIR" \
+  -DLLAMA_DIR="$LLAMA_DIR" \
+  -DLLAMA_BUILD_DIR="$BUILD_DIR" \
+  -DAI_LLAMA_RPATH="$RPATH_VALUE" \
+  -DCMAKE_BUILD_TYPE=Release
+
+cmake --build "$SHIM_BUILD_DIR" --config Release --target ai_llama
+
+mkdir -p "$INSTALL_DIR/lib"
+
+SHIM_LIB=$(find "$SHIM_BUILD_DIR" \( -name 'libai_llama.dylib' -o -name 'libai_llama.so' -o -name 'ai_llama.dll' \) | head -n 1)
+if [ -z "$SHIM_LIB" ]; then
+  echo "Could not find $SHIM_NAME in $SHIM_BUILD_DIR" >&2
+  exit 1
+fi
+
+cp -f "$SHIM_LIB" "$INSTALL_DIR/lib/$SHIM_NAME"
 
 case "$UNAME_S" in
   Darwin)
-    cc -dynamiclib -fPIC $INCLUDE_FLAGS "$ROOT_DIR/native/ai_llama_shim.c" \
-      -L"$LIB_DIR" -lllama -Wl,-rpath,"$RPATH_VALUE" \
-      -o "$INSTALL_DIR/lib/libai_llama.dylib"
     find "$LIB_DIR" -maxdepth 1 -name '*.dylib' -exec cp -P {} "$INSTALL_DIR/lib/" \;
     ;;
   Linux)
-    cc -shared -fPIC $INCLUDE_FLAGS "$ROOT_DIR/native/ai_llama_shim.c" \
-      -L"$LIB_DIR" -lllama -Wl,-rpath,"$RPATH_VALUE" \
-      -o "$INSTALL_DIR/lib/libai_llama.so"
     find "$LIB_DIR" -maxdepth 1 \( -name '*.so' -o -name '*.so.*' \) -exec cp -P {} "$INSTALL_DIR/lib/" \;
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    find "$BUILD_DIR" -type f -name '*.dll' -exec cp -f {} "$INSTALL_DIR/lib/" \;
     ;;
 esac
 
@@ -77,5 +96,8 @@ case "$UNAME_S" in
     ;;
   Linux)
     echo "AILlamaLibrary libraryPath: '$INSTALL_DIR/lib/libai_llama.so'."
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    echo "AILlamaLibrary libraryPath: '$INSTALL_DIR/lib/ai_llama.dll'."
     ;;
 esac
