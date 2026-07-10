@@ -39,7 +39,7 @@ AILlamaLibraryTest >> testExplicitLibraryPathOverridesPlatformNames [
 	| library path |
 	path := '/opt/pharo-infer/lib/custom-ai-llama'.
 	AILlamaLibrary libraryPath: path.
-	library := AILlamaLibrary new.
+	library := AILlamaLibrary uniqueInstance.
 
 	self assert: library macLibraryName equals: path.
 	self assert: library unixLibraryName equals: path.
