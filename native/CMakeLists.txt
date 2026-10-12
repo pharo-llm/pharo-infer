@@ -41,7 +41,16 @@ if(NOT LLAMA_LIBRARY)
   message(FATAL_ERROR "Could not find the llama shared/import library under ${LLAMA_BUILD_DIR}")
 endif()
 
+include(CheckStructHasMember)
+set(CMAKE_REQUIRED_INCLUDES "${LLAMA_DIR}/include" "${LLAMA_DIR}/ggml/include")
+check_struct_has_member("struct llama_model_params" load_mode "llama.h" AI_LLAMA_HAS_LOAD_MODE LANGUAGE C)
+unset(CMAKE_REQUIRED_INCLUDES)
+
 add_library(ai_llama SHARED ai_llama_shim.c)
+
+if(AI_LLAMA_HAS_LOAD_MODE)
+  target_compile_definitions(ai_llama PRIVATE AI_LLAMA_HAS_LOAD_MODE)
+endif()
 
 target_include_directories(ai_llama
   PRIVATE

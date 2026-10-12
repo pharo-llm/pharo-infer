@@ -16,7 +16,12 @@ AI_EXPORT struct llama_model *
 ai_llama_model_load_from_file(const char * path_model, int32_t n_gpu_layers, bool use_mmap) {
     struct llama_model_params params = llama_model_default_params();
     params.n_gpu_layers = n_gpu_layers;
+#if defined(AI_LLAMA_HAS_LOAD_MODE)
+    /* llama.cpp replaced the use_mmap flag with the llama_load_mode enum. */
+    params.load_mode = use_mmap ? LLAMA_LOAD_MODE_MMAP : LLAMA_LOAD_MODE_NONE;
+#else
     params.use_mmap = use_mmap;
+#endif
     return llama_model_load_from_file(path_model, params);
 }
 
